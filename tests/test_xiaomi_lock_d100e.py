@@ -593,3 +593,79 @@ def test_a_broken_momentary_delay_falls_back_to_the_default(make_device, load_mi
         customizes={"lock_actions": "remote_unlock_e", "momentary_seconds": "soon"},
     )
     assert momentary_entity(device).momentary_seconds == 5
+
+
+def test_the_lock_is_driven_locally_with_the_cloud_as_a_fallback(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+
+    assert device.custom_config_bool("miot_local") is True
+    assert device.custom_config_bool("auto_cloud") is True
+    # Actions are no longer pinned to the cloud, the lock answers miot over the LAN.
+    assert not device.custom_config_bool("miot_cloud_action")
+
+
+@pytest.mark.asyncio
+async def test_a_command_that_never_reached_the_lock_is_retried_over_the_cloud(
+    make_device,
+    load_miot_spec,
+):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        calls.append(kwargs.get("cloud", False))
+        if not kwargs.get("cloud"):
+            # What `Device.async_call_action` returns for a transport failure.
+            return MiotResult({}, code=-1, error="No response from the device")
+        if aiid == GET_LOCKMSG_AIID:
+            return MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
+        return MiotResult({"code": 0, "out": [1, "ok"]})
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_open() is True
+
+    # Secret read and command, each tried on the LAN first and then the cloud.
+    assert calls == [False, True, False, True]
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_is_not_retried_over_the_cloud(make_device, load_miot_spec):
+    """The lock heard the command and said no. Sending it again could repeat
+    something it already did, so the cloud is not tried."""
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        calls.append(kwargs.get("cloud", False))
+        if aiid == GET_LOCKMSG_AIID:
+            return MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
+        return MiotResult({"code": 0, "out": [0, "err"]})
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is False
+
+    assert calls == [False, False]
+
+
+@pytest.mark.parametrize(
+    "result, failed",
+    [
+        (MiotResult({}, code=-1, error="No response from the device"), True),
+        (MiotResult({"code": 0, "out": [0, "err"]}), False),  # refused, but heard
+        (MiotResult({"code": -704042011}), False),             # a real miot error
+        (MiotResult({"code": 0}), False),
+        (None, False),
+    ],
+)
+def test_transport_failure_is_told_apart_from_a_refusal(result, failed):
+    assert LockEntity.transport_failed(result) is failed
