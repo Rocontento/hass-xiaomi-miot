@@ -3401,6 +3401,9 @@ DEVICE_CUSTOMIZES = {
     '*.lock.*': {
         'sensor_attributes': 'door_state,lock_action,lock_key_id,timestamp',
         'binary_sensor_attributes': 'armed_state',
+        # Expose the unlocking actions of the lock (unlock, unlatch, remote unlock, ...) as buttons.
+        # Destructive actions (clearing fingerprints/passwords, resetting) are intentionally not matched.
+        'button_actions': 'lock,*unlock*,*unlatch*',
         'miio_cloud_props': 'event.6,event.7,event.8,event.11',
         'miio_cloud_props_template': 'ble_lock_events',
     },
