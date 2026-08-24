@@ -18,7 +18,21 @@ LOCK_UNLOCK_SIID = 18
 REMOTE_UNLOCK_AIID = 1
 REMOTE_LOCK_AIID = 3
 EMERGENCY_UNLOCK_AIID = 4
+GET_LOCKMSG_AIID = 10
 LOCK_STATE_PROP = "prop.19.12"
+
+
+def call_action_stub(secret_out, action_out=None):
+    """`get-lockmsg` answers with the secret, the command with res/msg."""
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        calls.append((siid, aiid, params))
+        if aiid == GET_LOCKMSG_AIID:
+            return MiotResult(secret_out)
+        return MiotResult(action_out if action_out is not None else {"code": 0, "out": [1, "ok"]})
+
+    return call_action, calls
 
 
 def model_device(make_device, load_miot_spec):
@@ -120,14 +134,18 @@ async def test_lock_commands_call_the_matching_miot_action(
 ):
     device = model_device(make_device, load_miot_spec)
     entity = lock_entity(device)
-    device.async_call_action = AsyncMock(return_value=MiotResult({"code": 0}))
+    call_action, calls = call_action_stub({"code": 0, "out": ["s3cret", 1, "ok"]})
+    device.async_call_action = call_action
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
         await getattr(entity, method)()
 
-    # `secret` is a string input of the action, it is sent empty unless customized.
-    device.async_call_action.assert_awaited_once_with(LOCK_UNLOCK_SIID, aiid, [""])
+    # The secret is read first, then sent as the input of the command itself.
+    assert calls == [
+        (LOCK_UNLOCK_SIID, GET_LOCKMSG_AIID, []),
+        (LOCK_UNLOCK_SIID, aiid, ["s3cret"]),
+    ]
     device.update_main_status.assert_awaited_once()
 
 
@@ -141,8 +159,10 @@ async def test_transition_state_is_shown_while_the_cloud_call_is_in_flight(
     entity.set_state({entity._conv_state.full_name: 0})
     seen = []
 
-    async def slow_action(*args, **kwargs):
+    async def slow_action(siid, aiid, params=None, **kwargs):
         seen.append((entity.is_locking, entity.is_unlocking))
+        if aiid == GET_LOCKMSG_AIID:
+            return MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
         return MiotResult({"code": 0})
 
     device.async_call_action = slow_action
@@ -151,7 +171,8 @@ async def test_transition_state_is_shown_while_the_cloud_call_is_in_flight(
     with patch.object(LockEntity, "_async_write_ha_state"):
         await entity.async_unlock()
 
-    assert seen == [(False, True)]
+    # Reading the secret is part of the wait, the transition shows through both calls.
+    assert seen == [(False, True), (False, True)]
     # The real state comes back with the next poll, `set_state` clears the transition.
     entity.set_state({entity._conv_state.full_name: 1})
     assert (entity.is_locked, entity.is_locking, entity.is_unlocking) == (False, False, False)
@@ -165,13 +186,86 @@ async def test_unlock_code_is_sent_as_the_action_secret(make_device, load_miot_s
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        await entity.async_unlock(code="s3cret")
+        await entity.async_unlock(code="typed-by-the-user")
+
+    # A code given by the user wins, the lock is not asked for a secret at all.
+    device.async_call_action.assert_awaited_once_with(
+        LOCK_UNLOCK_SIID,
+        REMOTE_UNLOCK_AIID,
+        ["typed-by-the-user"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_secret_action_is_resolved_from_the_spec(make_device, load_miot_spec):
+    entity = lock_entity(model_device(make_device, load_miot_spec))
+
+    assert entity._act_secret.unique_prop == f"action.{LOCK_UNLOCK_SIID}.{GET_LOCKMSG_AIID}"
+    assert entity._attr_extra_state_attributes["secret_action"] == "lock_unlock.get_lockmsg"
+    # `emergency-unlock` takes no input, so it must not trigger a secret read.
+    assert entity.needs_secret(entity._act_unlock, "unlock") is True
+    assert entity.needs_secret(
+        entity._act_unlock.service.get_action("emergency_unlock"), "unlock"
+    ) is False
+
+
+@pytest.mark.asyncio
+async def test_customized_action_params_win_over_the_secret_action(
+    make_device,
+    load_miot_spec,
+):
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"),
+        model=MODEL,
+        customizes={"unlock_action_params": ["fixed"]},
+    )
+    entity = lock_entity(device)
+    device.async_call_action = AsyncMock(return_value=MiotResult({"code": 0}))
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        await entity.async_unlock()
 
     device.async_call_action.assert_awaited_once_with(
         LOCK_UNLOCK_SIID,
         REMOTE_UNLOCK_AIID,
-        ["s3cret"],
+        ["fixed"],
     )
+
+
+@pytest.mark.asyncio
+async def test_the_secret_is_never_published_as_an_attribute(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.async_call_action, _ = call_action_stub({"code": 0, "out": ["s3cret", 1, "ok"]})
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        await entity.async_unlock()
+
+    assert "s3cret" not in str(entity._attr_extra_state_attributes)
+
+
+@pytest.mark.asyncio
+async def test_a_refused_secret_read_still_runs_the_command(make_device, load_miot_spec):
+    """The lock answers `res` 0 (Fail): there is no secret to send, but the
+    command is still attempted the way it was before secrets were read."""
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.async_call_action, calls = call_action_stub(
+        {"code": 0, "out": ["", 0, "err"]},
+        action_out={"code": 0, "out": [0, "err"]},
+    )
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is False
+
+    assert calls[-1] == (LOCK_UNLOCK_SIID, REMOTE_UNLOCK_AIID, [""])
+    assert entity._attr_extra_state_attributes["unlock_result"] == {
+        "res": "Fail",
+        "msg": "err",
+    }
 
 
 @pytest.mark.asyncio
