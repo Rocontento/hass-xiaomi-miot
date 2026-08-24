@@ -629,8 +629,9 @@ async def test_a_command_that_never_reached_the_lock_is_retried_over_the_cloud(
     with patch.object(LockEntity, "_async_write_ha_state"):
         assert await entity.async_open() is True
 
-    # Secret read and command, each tried on the LAN first and then the cloud.
-    assert calls == [False, True, False, True]
+    # The secret read falls back to the cloud, and the command follows it there
+    # rather than spending another LAN timeout while the secret grows stale.
+    assert calls == [False, True, True]
 
 
 @pytest.mark.asyncio
