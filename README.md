@@ -165,7 +165,9 @@ lock.your_entity_id:
   lock_action: remote_lock       # Miot action used to lock (Requires reload config entry)
   unlock_action: remote_unlock_e # Miot action used to unlock
   open_action: unlatch           # Miot action used to unlatch (open) the door
-  unlock_action_params: ['']     # Input params of the unlock action, eg. a verification secret
+  secret_action: get_lockmsg     # Miot action read before every command, for locks that
+                                 # only accept a secret they hand out themselves
+  unlock_action_params: ['']     # Input params of the unlock action, overrides `secret_action`
   lock_state_property: lock_state # Miot property holding the lock state
   code_format: '^\d{4,8}$'       # Ask for a code and send it as the string input of the action
 

@@ -2416,6 +2416,9 @@ DEVICE_CUSTOMIZES = {
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',
+        # `remote-lock` and `remote-unlock-e` only accept a secret the lock hands
+        # out itself, `get-lockmsg` is the action answering with it.
+        'secret_action': 'get_lockmsg',
         'sensor_properties': 'lock_information.lock_state,lock_information.lock_abnormal_status,'
                              'lock_information.lock_calibration,battery.lock_mah,battery.keypad_mah,'
                              'keyboard.keypad_state,keyboard.ble_signal',

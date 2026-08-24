@@ -40,6 +40,12 @@ DEFAULT_JAMMED_VALUES = ['Abnormal', 'Jammed', 'LockStalled']
 REJECTION_PROPERTIES = ['res', 'result', 'status']
 REJECTION_VALUES = ['fail', 'failed', 'failure']
 
+# Locks that take a secret as the action input hand that secret out themselves,
+# it has to be read right before every command. Actions asked for it, in priority
+# order, and the output properties carrying the secret they answer with.
+DEFAULT_SECRET_ACTIONS = ['get_lockmsg', 'get_lock_msg', 'get_secret']
+SECRET_PROPERTIES = ['secret', 'token', 'key']
+
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     HassEntry.init(hass, config_entry).new_adder(ENTITY_DOMAIN, async_add_entities)
@@ -62,6 +68,7 @@ class LockEntity(XEntity, BaseEntity):
     _act_lock: MiotAction = None
     _act_unlock: MiotAction = None
     _act_open: MiotAction = None
+    _act_secret: MiotAction = None
     _locked_values = None
     _unlocked_values = None
     _jammed_values = None
@@ -98,6 +105,7 @@ class LockEntity(XEntity, BaseEntity):
         self._act_lock = self.find_action(self.custom_config_list('lock_action') or DEFAULT_LOCK_ACTIONS)
         self._act_unlock = self.find_action(self.custom_config_list('unlock_action') or DEFAULT_UNLOCK_ACTIONS)
         self._act_open = self.find_action(self.custom_config_list('open_action') or DEFAULT_OPEN_ACTIONS)
+        self._act_secret = self.find_action(self.custom_config_list('secret_action') or DEFAULT_SECRET_ACTIONS)
         if self._act_open:
             self._attr_supported_features |= LockEntityFeature.OPEN
         if fmt := self.custom_config('code_format'):
@@ -107,6 +115,7 @@ class LockEntity(XEntity, BaseEntity):
             'lock_action': self._act_lock.full_name if self._act_lock else None,
             'unlock_action': self._act_unlock.full_name if self._act_unlock else None,
             'open_action': self._act_open.full_name if self._act_open else None,
+            'secret_action': self._act_secret.full_name if self._act_secret else None,
         })
 
     def find_state_converter(self):
@@ -160,12 +169,15 @@ class LockEntity(XEntity, BaseEntity):
     async def async_run_action(self, action: MiotAction, key, **kwargs):
         if not action:
             raise HomeAssistantError(f'No miot action found to {key} {self.entity_id}')
-        params = self.action_params(action, key, kwargs.get('code'))
         # These locks are driven through the cloud, show the transition while waiting.
         self._attr_is_locking = key == 'lock'
         self._attr_is_unlocking = key != 'lock'
         self._async_write_ha_state()
 
+        code = kwargs.get('code')
+        if code is None and self.needs_secret(action, key):
+            code = await self.async_read_secret()
+        params = self.action_params(action, key, code)
         result = await self.async_call_action(action, params)
         outs, rejected = self.action_result(action, result)
         # The miot call can succeed while the lock itself refuses the action,
@@ -181,6 +193,37 @@ class LockEntity(XEntity, BaseEntity):
         if success:
             await self.device.update_main_status()
         return success
+
+    def needs_secret(self, action: MiotAction, key):
+        """Whether the lock expects a secret of its own as the action input."""
+        if not self._act_secret or self._act_secret == action:
+            return False
+        if self.custom_config_list(f'{key}_action_params') is not None:
+            return False
+        return any(
+            prop and prop.format == 'string' and prop.in_list(SECRET_PROPERTIES)
+            for prop in action.in_properties()
+        )
+
+    async def async_read_secret(self):
+        """Ask the lock for the secret that authorises the next command.
+
+        The value is a short lived credential, it is deliberately never logged
+        nor published as an entity attribute.
+        """
+        result = await self.async_call_action(self._act_secret, [])
+        outs, rejected = self.action_result(self._act_secret, result)
+        if not result or not result.is_success or rejected or not outs:
+            self.log.warning(
+                '%s: Reading the lock secret with %s failed: %s',
+                self.entity_id, self._act_secret.full_name, outs or result,
+            )
+            return None
+        for name in SECRET_PROPERTIES:
+            value = outs.get(name)
+            if value not in (None, ''):
+                return f'{value}'
+        return None
 
     def action_result(self, action: MiotAction, result):
         """Locks answer with a result code and a message, decode them for the attributes."""
