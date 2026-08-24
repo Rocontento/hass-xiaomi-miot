@@ -1,0 +1,270 @@
+{
+  "type": "urn:miot-spec-v2:device:lock:0000A038:xiaomi-d100e:2",
+  "description": "Lock",
+  "services": [
+    {
+      "iid": 1,
+      "type": "urn:miot-spec-v2:service:device-information:00007801:xiaomi-d100e:1",
+      "description": "Device Information",
+      "properties": [
+        {"iid": 1, "type": "urn:miot-spec-v2:property:manufacturer:00000001:xiaomi-d100e:1", "description": "Device Manufacturer", "format": "string", "access": ["read"]},
+        {"iid": 2, "type": "urn:miot-spec-v2:property:model:00000002:xiaomi-d100e:1", "description": "Device Model", "format": "string", "access": ["read"]},
+        {"iid": 3, "type": "urn:miot-spec-v2:property:serial-number:00000003:xiaomi-d100e:1", "description": "Device ID", "format": "string", "access": ["read"]},
+        {"iid": 4, "type": "urn:miot-spec-v2:property:firmware-revision:00000005:xiaomi-d100e:1", "description": "Current Firmware Version", "format": "string", "access": ["read"]},
+        {"iid": 5, "type": "urn:miot-spec-v2:property:serial-no:000000FF:xiaomi-d100e:1", "description": "Serial Number", "format": "string", "access": ["read", "notify"]}
+      ]
+    },
+    {
+      "iid": 18,
+      "type": "urn:xiaomi-spec:service:lock-unlock:00007801:xiaomi-d100e:1",
+      "description": "lock-unlock",
+      "properties": [
+        {"iid": 2, "type": "urn:xiaomi-spec:property:secret:00000001:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:res:00000002:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}, {"value": 2, "description": "VoiceClose"}]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:msg:00000003:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:lock-tongue-time:00000005:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify", "write"], "value-range": [3, 10, 1]}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:remote-unlock-e:00002801:xiaomi-d100e:1", "description": "remote-unlock-e", "in": [2], "out": [3, 4]},
+        {"iid": 3, "type": "urn:xiaomi-spec:action:remote-lock:00002802:xiaomi-d100e:1", "description": "remote-lock", "in": [2], "out": [3, 4]},
+        {"iid": 4, "type": "urn:xiaomi-spec:action:emergency-unlock:00002803:xiaomi-d100e:1", "description": "emergency-unlock", "in": [], "out": [3, 4]},
+        {"iid": 5, "type": "urn:xiaomi-spec:action:voice-unlock:00002804:xiaomi-d100e:1", "description": "voice-unlock", "in": [2], "out": [3, 4]},
+        {"iid": 6, "type": "urn:xiaomi-spec:action:voice-lock:00002805:xiaomi-d100e:1", "description": "voice-lock", "in": [2], "out": [3, 4]},
+        {"iid": 8, "type": "urn:xiaomi-spec:action:ble-lock:00002806:xiaomi-d100e:1", "description": "ble-lock", "in": [], "out": [3, 4]},
+        {"iid": 9, "type": "urn:xiaomi-spec:action:ble-unlock:00002807:xiaomi-d100e:1", "description": "ble-unlock", "in": [], "out": [3, 4]},
+        {"iid": 10, "type": "urn:xiaomi-spec:action:get-lockmsg:00002808:xiaomi-d100e:1", "description": "get-lockmsg", "in": [], "out": [2, 3, 4]}
+      ]
+    },
+    {
+      "iid": 19,
+      "type": "urn:xiaomi-spec:service:lock-information:00007802:xiaomi-d100e:1",
+      "description": "lock-information",
+      "properties": [
+        {"iid": 3, "type": "urn:xiaomi-spec:property:lock-calibration:00000001:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Uncalibrated"}, {"value": 1, "description": "Calibrated"}]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:lock-type:00000002:xiaomi-d100e:1", "description": "lock-type", "format": "uint8", "access": ["read", "notify", "write"], "value-list": [{"value": 0, "description": "Lock-Key"}, {"value": 1, "description": "Lock-Handle"}], "gatt-access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:calibration-step:00000003:xiaomi-d100e:1", "description": "calibration-step", "format": "int8", "access": [], "value-list": [{"value": 0, "description": "Lock"}, {"value": 1, "description": "Unlock"}, {"value": 2, "description": "LockCalibration"}, {"value": 3, "description": "Exit-LockCalibration"}, {"value": 4, "description": "DoorSensorCalibration"}, {"value": 5, "description": "Exit-DoorSensorCalibration"}, {"value": 6, "description": "LockType-E"}], "gatt-access": []},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:result:00000004:xiaomi-d100e:1", "description": "", "format": "bool", "access": []},
+        {"iid": 7, "type": "urn:xiaomi-spec:property:msg:00000005:xiaomi-d100e:1", "description": "msg", "format": "string", "access": [], "gatt-access": []},
+        {"iid": 9, "type": "urn:xiaomi-spec:property:lock-data:00000007:xiaomi-d100e:1", "description": "", "format": "string", "access": ["read", "notify"]},
+        {"iid": 11, "type": "urn:xiaomi-spec:property:wifi-data:00000009:xiaomi-d100e:1", "description": "", "format": "string", "access": ["read", "notify"]},
+        {"iid": 12, "type": "urn:xiaomi-spec:property:lock-state:0000000a:xiaomi-d100e:1", "description": "lock-state", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Lock"}, {"value": 1, "description": "Unlock"}, {"value": 2, "description": "LockTongueProtruding"}, {"value": 3, "description": "Abnormal"}], "gatt-access": []},
+        {"iid": 13, "type": "urn:xiaomi-spec:property:time-zone:0000000b:xiaomi-d100e:1", "description": "time-zone", "format": "int16", "access": [], "value-range": [-12, 12, 1], "gatt-access": []},
+        {"iid": 14, "type": "urn:xiaomi-spec:property:timestamp:0000000c:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 15, "type": "urn:xiaomi-spec:property:wifi-status:0000000d:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify"]},
+        {"iid": 16, "type": "urn:xiaomi-spec:property:heartbeat-time:00000006:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 17, "type": "urn:xiaomi-spec:property:lock-abnormal-status:00000008:xiaomi-d100e:1", "description": "lock-abnormal-status", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Normal"}, {"value": 1, "description": "MotorFault"}, {"value": 2, "description": "LockAbnorma"}, {"value": 3, "description": "LockStalled"}, {"value": 4, "description": "LockUnknown"}], "gatt-access": []},
+        {"iid": 18, "type": "urn:xiaomi-spec:property:unlock-automation:0000000e:xiaomi-d100e:1", "description": "unlock-automation", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Unlock"}, {"value": 1, "description": "Lock"}], "gatt-access": []}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:lock-calibration:00002801:xiaomi-d100e:1", "description": "lock-calibration", "in": [5], "out": [6, 7]},
+        {"iid": 2, "type": "urn:xiaomi-spec:action:synchronize-time:00002802:xiaomi-d100e:1", "description": "synchronize-time", "in": [13, 14], "out": [6, 7]},
+        {"iid": 4, "type": "urn:xiaomi-spec:action:record-lock:00002804:xiaomi-d100e:1", "description": "record-lock", "in": [], "out": [6, 7]},
+        {"iid": 5, "type": "urn:xiaomi-spec:action:record-unlock:00002805:xiaomi-d100e:1", "description": "record-unlock", "in": [], "out": [6, 7]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:lock:00005001:xiaomi-d100e:1", "description": "lock", "arguments": [6, 7]},
+        {"iid": 2, "type": "urn:xiaomi-spec:event:unlock:00005002:xiaomi-d100e:1", "description": "unlock", "arguments": [6, 7]},
+        {"iid": 3, "type": "urn:xiaomi-spec:event:door-calibration:00005003:xiaomi-d100e:1", "description": "door-calibration", "arguments": [6, 7]}
+      ]
+    },
+    {
+      "iid": 20,
+      "type": "urn:xiaomi-spec:service:door:00007803:xiaomi-d100e:1",
+      "description": "door",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:door-state:00000001:xiaomi-d100e:1", "description": "door-state", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Open"}, {"value": 1, "description": "Close"}, {"value": 2, "description": "NotDetected"}], "gatt-access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:current-time:00000003:xiaomi-d100e:1", "description": "", "format": "uint32", "access": ["read", "notify"], "value-range": [0, 4294967295, 1]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:calibration-state:00000004:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify"]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:close-door:00005001:xiaomi-d100e:1", "description": "close-door", "arguments": [1, 3]}
+      ]
+    },
+    {
+      "iid": 21,
+      "type": "urn:xiaomi-spec:service:battery:00007804:xiaomi-d100e:1",
+      "description": "battery",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:lock-mah:00000001:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify"], "unit": "percentage", "value-range": [0, 100, 1]},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:keypad-mah:00000002:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify"], "unit": "percentage", "value-range": [0, 100, 1]},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:lock-mah-update:00000003:xiaomi-d100e:1", "description": "", "format": "uint32", "access": ["read", "notify"], "value-range": [0, 4294967295, 1]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:keypad-mah-update:00000004:xiaomi-d100e:1", "description": "", "format": "uint32", "access": ["read", "notify"], "value-range": [0, 4294967295, 1]},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:lock-battery-install:00000005:xiaomi-d100e:1", "description": "", "format": "uint32", "access": ["read", "notify"], "value-range": [0, 4294967295, 1]},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:keypad-battery-i:00000006:xiaomi-d100e:1", "description": "keypad-battery-i", "format": "uint32", "access": ["read", "notify"], "value-range": [0, 4294967295, 1], "gatt-access": []},
+        {"iid": 7, "type": "urn:xiaomi-spec:property:current-time:00000007:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 8, "type": "urn:xiaomi-spec:property:result:00000008:xiaomi-d100e:1", "description": "", "format": "bool", "access": []}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:check-lock-mah:00002801:xiaomi-d100e:1", "description": "check-lock-mah", "in": [], "out": [1, 3, 8]},
+        {"iid": 2, "type": "urn:xiaomi-spec:action:check-keypad-mah:00002802:xiaomi-d100e:1", "description": "check-keypad-mah", "in": [], "out": [2, 4, 8]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:lock-mah-low:00005001:xiaomi-d100e:1", "description": "lock-mah-low", "arguments": [1, 7]},
+        {"iid": 2, "type": "urn:xiaomi-spec:event:keypad-mah-low:00005002:xiaomi-d100e:1", "description": "keypad-mah-low", "arguments": [2, 7]},
+        {"iid": 3, "type": "urn:xiaomi-spec:event:update-mah:00005003:xiaomi-d100e:1", "description": "update-mah", "arguments": [1, 2, 7]},
+        {"iid": 4, "type": "urn:xiaomi-spec:event:lock-mah-below-five:00005004:xiaomi-d100e:1", "description": "lock-mah-below-five", "arguments": [1, 7]},
+        {"iid": 5, "type": "urn:xiaomi-spec:event:keypad-mah-belowfive:00005005:xiaomi-d100e:1", "description": "keypad-mah-belowfive", "arguments": [2, 7]}
+      ]
+    },
+    {
+      "iid": 22,
+      "type": "urn:xiaomi-spec:service:log:00007805:xiaomi-d100e:1",
+      "description": "log",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:operation-log-type:00000001:xiaomi-d100e:1", "description": "operation-log-type", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "MatterUnlock"}, {"value": 1, "description": "MatterLock"}, {"value": 2, "description": "PhysicsClose"}, {"value": 3, "description": "AppClose"}, {"value": 4, "description": "OneClickUnlock"}, {"value": 5, "description": "OneClickLock"}, {"value": 6, "description": "PasswordOpen"}, {"value": 7, "description": "FingerprintOpen"}, {"value": 8, "description": "PhysicsOpen"}, {"value": 9, "description": "AppOpen"}, {"value": 10, "description": "OTPOpen"}, {"value": 11, "description": "PeriodicCipherOpen"}, {"value": 12, "description": "AddFingerprint"}, {"value": 13, "description": "DeleteFingerprint"}, {"value": 14, "description": "AddPassword"}, {"value": 15, "description": "DeletePassword"}, {"value": 16, "description": "EmergencyUnlock"}, {"value": 17, "description": "KeyboardOneKeyLock"}, {"value": 18, "description": "AutoLock"}, {"value": 19, "description": "DoorClose"}, {"value": 20, "description": "UnlockFail"}, {"value": 21, "description": "LockFail"}], "gatt-access": []},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:alarm-log-type:00000002:xiaomi-d100e:1", "description": "alarm-log-type", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fingerprint-PasswordError"}, {"value": 1, "description": "HijackAlarm"}, {"value": 2, "description": "LockBatteryLow"}, {"value": 3, "description": "KeypadBatteryLow"}, {"value": 4, "description": "LockOpen"}, {"value": 5, "description": "KeyboardPry"}], "gatt-access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:res:00000003:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:operation-id:00000004:xiaomi-d100e:1", "description": "operation-id", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1], "gatt-access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:push-status:00000005:xiaomi-d100e:1", "description": "", "format": "bool", "access": []},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:current-time:00000006:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967294, 1]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:operation-log:00005001:xiaomi-d100e:1", "description": "operation-log", "arguments": [3, 1, 4, 5, 6]},
+        {"iid": 2, "type": "urn:xiaomi-spec:event:alarm-log:00005002:xiaomi-d100e:1", "description": "alarm-log", "arguments": [3, 2, 4, 5, 6]}
+      ]
+    },
+    {
+      "iid": 23,
+      "type": "urn:xiaomi-spec:service:keyboard:00007806:xiaomi-d100e:1",
+      "description": "keyboard",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:keypad-state:00000001:xiaomi-d100e:1", "description": "keypad-state", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "NotBound"}, {"value": 1, "description": "Bound"}, {"value": 2, "description": "Demolish"}], "gatt-access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:bound-action:00000003:xiaomi-d100e:1", "description": "bound-action", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "NotBound"}, {"value": 1, "description": "Bound"}], "gatt-access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:msg:00000002:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 9, "type": "urn:xiaomi-spec:property:result:00000006:xiaomi-d100e:1", "description": "result", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}], "gatt-access": []},
+        {"iid": 10, "type": "urn:xiaomi-spec:property:bound-keypad-data:00000007:xiaomi-d100e:1", "description": "", "format": "string", "access": ["read", "notify"]},
+        {"iid": 11, "type": "urn:xiaomi-spec:property:bound-result:00000008:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}, {"value": 2, "description": "Bound"}]},
+        {"iid": 12, "type": "urn:xiaomi-spec:property:ble-state:00000009:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify"]},
+        {"iid": 13, "type": "urn:xiaomi-spec:property:ble-signal:0000000a:xiaomi-d100e:1", "description": "ble-signal", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "Low"}, {"value": 1, "description": "Middle"}, {"value": 2, "description": "High"}], "gatt-access": []},
+        {"iid": 14, "type": "urn:xiaomi-spec:property:keypad-bind-password:00000004:xiaomi-d100e:1", "description": "keypad-bind-password", "format": "string", "access": [], "gatt-access": []}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:bound-keypad:00002801:xiaomi-d100e:1", "description": "bound-keypad", "in": [3], "out": [11, 5]},
+        {"iid": 2, "type": "urn:xiaomi-spec:action:exit-pairing-keypad:00002802:xiaomi-d100e:1", "description": "exit-pairing-keypad", "in": [], "out": [9, 5]},
+        {"iid": 3, "type": "urn:xiaomi-spec:action:keypad-bind-password:00002803:xiaomi-d100e:1", "description": "keypad-bind-password", "in": [14], "out": [5, 9]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:bind-result-event:00005001:xiaomi-d100e:1", "description": "bind-result-event", "arguments": [11, 5]},
+        {"iid": 2, "type": "urn:xiaomi-spec:event:check-password:00005002:xiaomi-d100e:1", "description": "check-password", "arguments": [9, 5]}
+      ]
+    },
+    {
+      "iid": 24,
+      "type": "urn:xiaomi-spec:service:user-management:00007807:xiaomi-d100e:1",
+      "description": "user-management",
+      "properties": [
+        {"iid": 8, "type": "urn:xiaomi-spec:property:password-current:00000001:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 11, "type": "urn:xiaomi-spec:property:result:00000003:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Success"}, {"value": 1, "description": "AsyncSuccess"}, {"value": 2, "description": "Internal"}, {"value": 3, "description": "NotFound"}, {"value": 4, "description": "NoMem"}, {"value": 5, "description": "InvalidParam"}, {"value": 6, "description": "Timeout"}, {"value": 7, "description": "Busy"}, {"value": 8, "description": "DuplicateParam"}]},
+        {"iid": 12, "type": "urn:xiaomi-spec:property:msg:00000004:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 13, "type": "urn:xiaomi-spec:property:user-id:00000005:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 14, "type": "urn:xiaomi-spec:property:visitor-id:00000006:xiaomi-d100e:1", "description": "visitor-id", "format": "uint16", "access": [], "value-range": [0, 65535, 1], "gatt-access": []},
+        {"iid": 15, "type": "urn:xiaomi-spec:property:password-id:00000007:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 16, "type": "urn:xiaomi-spec:property:fingerprint-id:00000008:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 17, "type": "urn:xiaomi-spec:property:s-fingerprint-id:00000009:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 18, "type": "urn:xiaomi-spec:property:periodic-cipher-id:0000000a:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 20, "type": "urn:xiaomi-spec:property:nickname-current:0000000b:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 21, "type": "urn:xiaomi-spec:property:edit-password-type:0000000c:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "AddPassword"}, {"value": 1, "description": "ResetPassword"}, {"value": 2, "description": "DeletePassword"}, {"value": 3, "description": "EditName"}]},
+        {"iid": 22, "type": "urn:xiaomi-spec:property:edit-periodic-type:0000000d:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Add"}, {"value": 1, "description": "Delete"}, {"value": 2, "description": "Edit"}]},
+        {"iid": 23, "type": "urn:xiaomi-spec:property:periodic-start-time:0000000e:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 24, "type": "urn:xiaomi-spec:property:periodic-end-time:0000000f:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 25, "type": "urn:xiaomi-spec:property:periodic-repeat:00000010:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Never"}, {"value": 1, "description": "Day"}, {"value": 2, "description": "Week"}, {"value": 3, "description": "TwoWeek"}, {"value": 4, "description": "Month"}]},
+        {"iid": 26, "type": "urn:xiaomi-spec:property:end-repeat-never:00000011:xiaomi-d100e:1", "description": "", "format": "bool", "access": []},
+        {"iid": 27, "type": "urn:xiaomi-spec:property:end-repeat-time:00000012:xiaomi-d100e:1", "description": "end-repeat-time", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1], "gatt-access": []},
+        {"iid": 28, "type": "urn:xiaomi-spec:property:finger-input-step:00000013:xiaomi-d100e:1", "description": "finger-input-step", "format": "uint8", "access": ["read", "notify"], "value-list": [{"value": 0, "description": "InputStart"}, {"value": 1, "description": "One"}, {"value": 2, "description": "Two"}, {"value": 3, "description": "Three"}, {"value": 4, "description": "Four"}, {"value": 5, "description": "Five"}, {"value": 6, "description": "Six"}, {"value": 7, "description": "Seven"}, {"value": 8, "description": "InputCompleted"}, {"value": 9, "description": "FingerRepeat"}, {"value": 10, "description": "Fail"}, {"value": 11, "description": "Timeout"}], "gatt-access": []},
+        {"iid": 29, "type": "urn:xiaomi-spec:property:edit-finger-type:00000014:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Add"}, {"value": 1, "description": "Delete"}]},
+        {"iid": 33, "type": "urn:xiaomi-spec:property:finger-input-notice:00000017:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "StartInput"}, {"value": 1, "description": "ExitInput"}]},
+        {"iid": 36, "type": "urn:xiaomi-spec:property:user-data:00000015:xiaomi-d100e:1", "description": "user-data", "format": "string", "access": [], "gatt-access": []}
+      ],
+      "actions": [
+        {"iid": 2, "type": "urn:xiaomi-spec:action:edit-user-password:00002801:xiaomi-d100e:1", "description": "edit-user-password", "in": [8, 13, 15, 21], "out": [11, 12, 13, 15]},
+        {"iid": 3, "type": "urn:xiaomi-spec:action:edit-periodic-cipher:00002802:xiaomi-d100e:1", "description": "edit-periodic-cipher", "in": [8, 14, 18, 22, 23, 24, 25, 26, 27], "out": [14, 18, 11, 12]},
+        {"iid": 4, "type": "urn:xiaomi-spec:action:edit-fingerprint:00002803:xiaomi-d100e:1", "description": "edit-fingerprint", "in": [13, 16, 29], "out": [13, 16, 11, 12]},
+        {"iid": 5, "type": "urn:xiaomi-spec:action:edit-stress-finger:00002804:xiaomi-d100e:1", "description": "edit-stress-finger", "in": [13, 17, 29], "out": [13, 17, 11, 12]},
+        {"iid": 6, "type": "urn:xiaomi-spec:action:finger-input-notice:00002805:xiaomi-d100e:1", "description": "finger-input-notice", "in": [33], "out": [11, 12]},
+        {"iid": 7, "type": "urn:xiaomi-spec:action:delete-user:00002806:xiaomi-d100e:1", "description": "delete-user", "in": [13], "out": [11, 12]},
+        {"iid": 8, "type": "urn:xiaomi-spec:action:delete-visitor:00002807:xiaomi-d100e:1", "description": "delete-visitor", "in": [14], "out": [11, 12]},
+        {"iid": 9, "type": "urn:xiaomi-spec:action:update-user-data:00002808:xiaomi-d100e:2", "description": "update-user-data", "in": [], "out": [11, 12]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:update-user-data:00005001:xiaomi-d100e:1", "description": "update-user-data", "arguments": [36]}
+      ]
+    },
+    {
+      "iid": 25,
+      "type": "urn:xiaomi-spec:service:alarm:00007808:xiaomi-d100e:1",
+      "description": "alarm",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:warning-tone:00000001:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify", "write"], "value-list": [{"value": 0, "description": "Mute"}, {"value": 1, "description": "Voiced"}]},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:alarm-tone:00000002:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify", "write"], "value-list": [{"value": 0, "description": "Mute"}, {"value": 1, "description": "Voiced"}]},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:warring-time:00000003:xiaomi-d100e:1", "description": "", "format": "uint8", "access": ["read", "notify", "write"], "value-list": [{"value": 0, "description": "NoWarning"}, {"value": 1, "description": "5"}, {"value": 2, "description": "10"}, {"value": 3, "description": "20"}, {"value": 4, "description": "30"}, {"value": 5, "description": "120"}, {"value": 6, "description": "180"}]}
+      ]
+    },
+    {
+      "iid": 26,
+      "type": "urn:xiaomi-spec:service:convenient-service:00007809:xiaomi-d100e:1",
+      "description": "convenient-service",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:close-door-lock:00000001:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:close-door-lock-time:00000002:xiaomi-d100e:1", "description": "close-door-lock-time", "format": "uint16", "access": ["read", "notify", "write"], "value-range": [1, 3599, 1], "gatt-access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:unlock-auto-lock:00000003:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:unlock-autolock-time:00000004:xiaomi-d100e:1", "description": "unlock-autolock-time", "format": "uint16", "access": ["read", "notify", "write"], "value-range": [1, 3599, 1], "gatt-access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:voice-unlock:00000005:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:matter-data:00000006:xiaomi-d100e:1", "description": "matter-data", "format": "string", "access": ["read", "notify"], "gatt-access": []},
+        {"iid": 7, "type": "urn:xiaomi-spec:property:matter-number:00000007:xiaomi-d100e:1", "description": "", "format": "string", "access": ["read", "notify"]}
+      ]
+    },
+    {
+      "iid": 27,
+      "type": "urn:xiaomi-spec:service:intelligent-mode:0000780a:xiaomi-d100e:1",
+      "description": "intelligent-mode",
+      "properties": [
+        {"iid": 2, "type": "urn:xiaomi-spec:property:start-time:00000001:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:end-time:00000002:xiaomi-d100e:1", "description": "", "format": "uint32", "access": [], "value-range": [0, 4294967295, 1]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:repeat:0000000b:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-range": [0, 255, 1]},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:result:00000004:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}]},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:msg:00000005:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 8, "type": "urn:xiaomi-spec:property:operation-id:00000006:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-range": [0, 255, 1]},
+        {"iid": 9, "type": "urn:xiaomi-spec:property:operation-state:00000007:xiaomi-d100e:1", "description": "", "format": "bool", "access": []},
+        {"iid": 10, "type": "urn:xiaomi-spec:property:operation-type:00000008:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "DoNotDisturb"}, {"value": 1, "description": "NormallyOpen"}, {"value": 2, "description": "PowerSave"}]}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:set-state:00002801:xiaomi-d100e:1", "description": "set-state", "in": [8, 9, 10], "out": [5, 6]},
+        {"iid": 2, "type": "urn:xiaomi-spec:action:add-time:00002802:xiaomi-d100e:1", "description": "add-time", "in": [2, 3, 10, 8, 4], "out": [5, 6]},
+        {"iid": 3, "type": "urn:xiaomi-spec:action:del-time:00002803:xiaomi-d100e:1", "description": "del-time", "in": [8, 10], "out": [5, 6]},
+        {"iid": 4, "type": "urn:xiaomi-spec:action:edit-time:00002804:xiaomi-d100e:1", "description": "edit-time", "in": [8, 10, 2, 3, 4], "out": [5, 6]}
+      ]
+    },
+    {
+      "iid": 28,
+      "type": "urn:xiaomi-spec:service:notice-management:0000780b:xiaomi-d100e:1",
+      "description": "notice-management",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:operation-id:00000001:xiaomi-d100e:1", "description": "", "format": "uint16", "access": [], "value-range": [0, 65535, 1]},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:operation-state:00000002:xiaomi-d100e:1", "description": "", "format": "bool", "access": []},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:res:00000003:xiaomi-d100e:1", "description": "", "format": "uint8", "access": [], "value-list": [{"value": 0, "description": "Fail"}, {"value": 1, "description": "Success"}]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:msg:00000004:xiaomi-d100e:1", "description": "", "format": "string", "access": []},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:allow-notification:00000005:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "write", "notify"]},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:user-notice-status:00000006:xiaomi-d100e:1", "description": "", "format": "string", "access": ["read", "notify"]}
+      ],
+      "actions": [
+        {"iid": 1, "type": "urn:xiaomi-spec:action:set-user-notice:00002801:xiaomi-d100e:1", "description": "set-user-notice", "in": [1, 2], "out": [3, 4]}
+      ],
+      "events": [
+        {"iid": 1, "type": "urn:xiaomi-spec:event:update-notice-status:00005001:xiaomi-d100e:1", "description": "update-notice-status", "arguments": [6]}
+      ]
+    },
+    {
+      "iid": 29,
+      "type": "urn:xiaomi-spec:service:keypad-management:0000780c:xiaomi-d100e:1",
+      "description": "keypad-management",
+      "properties": [
+        {"iid": 1, "type": "urn:xiaomi-spec:property:lock-key-state:00000001:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 2, "type": "urn:xiaomi-spec:property:close-door-enable:00000002:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 3, "type": "urn:xiaomi-spec:property:forbidden-keypad-s:00000003:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 4, "type": "urn:xiaomi-spec:property:backlight:00000004:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 5, "type": "urn:xiaomi-spec:property:warning-tone:00000005:xiaomi-d100e:1", "description": "", "format": "bool", "access": ["read", "notify", "write"]},
+        {"iid": 6, "type": "urn:xiaomi-spec:property:error-tip:00000006:xiaomi-d100e:1", "description": "error-tip", "format": "uint8", "access": ["read", "notify", "write"], "value-list": [{"value": 0, "description": "NoWarning"}, {"value": 1, "description": "5"}, {"value": 2, "description": "10"}, {"value": 3, "description": "15"}, {"value": 4, "description": "20"}, {"value": 5, "description": "25"}], "gatt-access": []}
+      ]
+    }
+  ]
+}

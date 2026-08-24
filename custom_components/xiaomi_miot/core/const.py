@@ -32,6 +32,7 @@ SUPPORTED_DOMAINS = [
     'fan',
     'climate',
     'cover',
+    'lock',
     'humidifier',
     'media_player',
     'camera',

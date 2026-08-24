@@ -161,6 +161,14 @@ cover.your_entity_id:
   open_texts: Open,Up
   close_texts: Close,Down
 
+lock.your_entity_id:
+  lock_action: remote_lock       # Miot action used to lock (Requires reload config entry)
+  unlock_action: remote_unlock_e # Miot action used to unlock
+  open_action: unlatch           # Miot action used to unlatch (open) the door
+  unlock_action_params: ['']     # Input params of the unlock action, eg. a verification secret
+  lock_state_property: lock_state # Miot property holding the lock state
+  code_format: '^\d{4,8}$'       # Ask for a code and send it as the string input of the action
+
 media_player.mitv_entity_id:
   bind_xiaoai: media_player.xiaoai_entity_id # Bind xiaoai speaker for turn on TV
 
