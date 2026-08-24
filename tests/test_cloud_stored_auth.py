@@ -107,3 +107,29 @@ async def test_stored_session_without_user_id_stays_empty(hass, stored_user_id):
     cloud = await MiotCloud.from_token(hass, config_flow_input(), login=False)
 
     assert cloud.user_id == ""
+
+
+async def test_config_flow_sequence_does_not_wipe_the_restored_session(hass):
+    """Reproduces exactly what BaseFlowHandler.get_cloud does: from_token()
+    followed by merger_config() on the *same* user_input dict.
+
+    The account originally logged in with an email, so the store's saved
+    username is that email (`to_config()` records `self.username` as of
+    the successful login). Finding the file again means typing the numeric
+    user id instead (the store is keyed by user id, see
+    `test_stored_session_is_looked_up_by_the_typed_username`), so the typed
+    username and the stored one legitimately differ.
+    """
+    await store_auth(hass, data={**STORED, CONF_USERNAME: "someone@example.com"})
+    user_input = config_flow_input()  # types the numeric id, per the workaround
+
+    cloud = await MiotCloud.from_token(hass, user_input, login=False)
+    cloud.merger_config(user_input)
+
+    assert cloud.service_token == "stored-service-token"
+    assert cloud.ssecurity == "stored-ssecurity"
+    assert cloud.user_id == USER_ID
+    # The caller's dict must not be mutated by from_token, or the very next
+    # merger_config() call sees a "changed" username and wipes the session
+    # it just loaded.
+    assert user_input[CONF_USERNAME] == USER_ID
