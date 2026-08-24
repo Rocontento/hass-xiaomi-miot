@@ -914,6 +914,10 @@ class MiotCloud(micloud.MiCloud):
             config.update(sdt)
             mic.service_token = config.get('service_token')
             mic.ssecurity = config.get('ssecurity')
+            # The stored session is useless without its user id: `api_session` and
+            # `async_get_devices` both refuse to run when it is missing. A config
+            # flow only knows the typed username, so restore it from the store.
+            mic.user_id = str(config.get('user_id') or mic.user_id or '')
             did = config.get('device_id') or ''
             if did and len(did) <= 32:
                 mic.client_id = did
