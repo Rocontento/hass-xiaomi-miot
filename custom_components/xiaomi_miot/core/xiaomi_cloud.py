@@ -911,14 +911,23 @@ class MiotCloud(micloud.MiCloud):
             mic.merger_config(config)
         if not mic.service_token:
             sdt = await mic.async_stored_auth(save=False)
-            config.update(sdt)
-            mic.service_token = config.get('service_token')
-            mic.ssecurity = config.get('ssecurity')
+            # Merge into a local dict, do not mutate the caller's `config`
+            # (== the config flow's `user_input`). The store keeps the
+            # username that was active when the session was saved, which is
+            # not necessarily what was just typed (eg. restoring a session
+            # saved under an email by typing the numeric user id, the only
+            # way to find the file, since it is keyed by user id). Leaking
+            # that stored username back into `user_input` would make the
+            # `merger_config()` call the config flow makes right after this
+            # one see a "changed" username and wipe the session being restored.
+            stored = {**config, **sdt}
+            mic.service_token = stored.get('service_token')
+            mic.ssecurity = stored.get('ssecurity')
             # The stored session is useless without its user id: `api_session` and
             # `async_get_devices` both refuse to run when it is missing. A config
             # flow only knows the typed username, so restore it from the store.
-            mic.user_id = str(config.get('user_id') or mic.user_id or '')
-            did = config.get('device_id') or ''
+            mic.user_id = str(stored.get('user_id') or mic.user_id or '')
+            did = stored.get('device_id') or ''
             if did and len(did) <= 32:
                 mic.client_id = did
                 mic.useragent = UA % did
