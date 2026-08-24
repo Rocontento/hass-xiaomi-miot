@@ -2440,6 +2440,19 @@ DEVICE_CUSTOMIZES = {
         'select_properties': 'lock_information.lock_type,alarm.warning_tone,alarm.alarm_tone,'
                              'alarm.warring_time,keypad_management.error_tip',
         'button_actions': 'emergency_unlock,ble_lock,ble_unlock,check_lock_mah,check_keypad_mah',
+        # Only the lock and the door have to be fresh. Everything else is battery
+        # and settings, read rarely so the lock is not woken 46 properties at a
+        # time. The fast chunk is also the one refreshed after each command.
+        'interval_seconds': 900,
+        'chunk_coordinators': [
+            {'interval': 60, 'props': 'lock_information.lock_state,door.door_state'},
+        ],
+        # Inherited from `*.lock.*`: a cloud poll for bluetooth lock events, which
+        # this wifi lock does not emit. It only tied the lock back to the internet.
+        'miio_cloud_props': [],
+        'miio_cloud_props_template': None,
+        'sensor_attributes': None,
+        'binary_sensor_attributes': None,
         # A second, momentary lock entity: one tap unlatches and it locks itself
         # again. Home apps reached through a bridge only offer lock and unlock,
         # this gives them the unlatch the main entity keeps behind `open`.
