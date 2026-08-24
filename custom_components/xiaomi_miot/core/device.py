@@ -498,13 +498,18 @@ class Device(CustomConfigHelper):
                     )
                     self.add_converter(conv)
 
-        for d in ['button', 'text', 'select']:
+        for d in ['button', 'text', 'select', 'lock']:
             als = self.custom_config_list(f'{d}_actions') or []
             if not als:
                 continue
             for srv in self.spec.services.values():
                 for action in srv.get_actions(*als):
-                    self.add_converter(MiotActionConv(action.full_name, d, action=action))
+                    conv = MiotActionConv(action.full_name, d, action=action)
+                    if d == 'lock':
+                        # A lock built from one action has no state to read back,
+                        # it locks itself again shortly after running.
+                        conv.with_option(entity_type='lock_action')
+                    self.add_converter(conv)
 
         for d in ['sensor', 'binary_sensor']:
             for attr in self.custom_config_list(f'{d}_attributes') or []:

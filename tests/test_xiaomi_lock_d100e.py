@@ -8,7 +8,7 @@ from custom_components.xiaomi_miot import (  # noqa: F401
     binary_sensor, button, lock, number, select, sensor, switch,
 )
 from custom_components.xiaomi_miot.button import ButtonEntity
-from custom_components.xiaomi_miot.lock import LockEntity
+from custom_components.xiaomi_miot.lock import LockEntity, MomentaryLockEntity
 from custom_components.xiaomi_miot.core.converters import MiotLockConv, MiotActionConv
 from custom_components.xiaomi_miot.core.miot_spec import MiotResult
 
@@ -384,7 +384,12 @@ def test_complete_entity_set(make_device, load_miot_spec):
     with patch("custom_components.xiaomi_miot.core.device.async_call_later"):
         entities = collect_entities(device)
 
-    assert len(entities["lock"]) == 1
+    # The stateful lock, plus the momentary unlatch one for bridged home apps.
+    assert {entity.entity_id for entity in entities["lock"]} == {
+        "lock.xiaomi_d100e_eeff",
+        "lock.xiaomi_d100e_eeff_remote_unlock_e",
+    }
+    assert [type(e).__name__ for e in entities["lock"]].count("MomentaryLockEntity") == 1
     assert {entity.entity_id for entity in entities["button"]} >= {
         "button.xiaomi_d100e_eeff_emergency_unlock",
         "button.xiaomi_d100e_eeff_ble_lock",
@@ -461,3 +466,130 @@ def test_a_token_is_told_apart_from_an_error_message():
     assert not LockEntity.action_challenge({"msg": "secret invalid"})
     assert not LockEntity.action_challenge({"msg": ""})
     assert not LockEntity.action_challenge(None)
+
+
+def momentary_entity(device):
+    converter = next(
+        c for c in device.converters
+        if c.domain == "lock" and isinstance(c, MiotActionConv)
+    )
+    return MomentaryLockEntity(device, converter)
+
+
+def test_a_momentary_lock_is_built_from_the_unlatch_action(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    converters = [c for c in device.converters if c.domain == "lock"]
+
+    # The stateful lock and the momentary one, side by side on the same device.
+    assert len(converters) == 2
+    action_conv = next(c for c in converters if isinstance(c, MiotActionConv))
+    assert action_conv.action.unique_prop == f"action.{LOCK_UNLOCK_SIID}.{REMOTE_UNLOCK_AIID}"
+    assert action_conv.option.get("entity_type") == "lock_action"
+
+    entity = MomentaryLockEntity(device, action_conv)
+    assert entity.entity_id == "lock.xiaomi_d100e_eeff_remote_unlock_e"
+    assert entity.unique_id != lock_entity(device).unique_id
+    assert entity._attr_name == "Unlatch"
+    # No `open`: a home app behind a bridge only ever sees lock and unlock.
+    assert not entity.supported_features & LockEntityFeature.OPEN
+    assert entity.is_locked is True
+
+
+@pytest.mark.asyncio
+async def test_the_momentary_lock_unlatches_then_locks_itself(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = momentary_entity(device)
+    device.async_call_action, calls = call_action_stub({"code": 0, "out": ["s3cret", 1, "ok"]})
+    device.update_main_status = AsyncMock()
+    relock = []
+
+    with patch("custom_components.xiaomi_miot.lock.async_call_later") as later:
+        later.side_effect = lambda hass, delay, action: relock.append((delay, action)) or (lambda: None)
+        with patch.object(MomentaryLockEntity, "_async_write_ha_state"):
+            assert await entity.async_unlock() is True
+
+            # Same secret handling as the real lock entity.
+            assert calls == [
+                (LOCK_UNLOCK_SIID, GET_LOCKMSG_AIID, []),
+                (LOCK_UNLOCK_SIID, REMOTE_UNLOCK_AIID, ["s3cret"]),
+            ]
+            assert entity.is_locked is False
+
+            delay, callback = relock[0]
+            assert delay == 5
+            await callback()
+            assert entity.is_locked is True
+            assert entity.is_unlocking is False
+
+
+@pytest.mark.asyncio
+async def test_the_momentary_lock_stays_locked_when_the_action_fails(
+    make_device,
+    load_miot_spec,
+):
+    device = model_device(make_device, load_miot_spec)
+    entity = momentary_entity(device)
+    device.async_call_action, _ = call_action_stub(
+        {"code": 0, "out": ["s3cret", 1, "ok"]},
+        action_out={"code": 0, "out": [0, "err"]},
+    )
+    device.update_main_status = AsyncMock()
+
+    with patch("custom_components.xiaomi_miot.lock.async_call_later") as later:
+        with patch.object(MomentaryLockEntity, "_async_write_ha_state"):
+            assert await entity.async_unlock() is False
+
+    assert entity.is_locked is True
+    assert entity.is_unlocking is False
+    later.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_locking_the_momentary_lock_touches_no_action(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = momentary_entity(device)
+    device.async_call_action = AsyncMock()
+
+    with patch.object(MomentaryLockEntity, "_async_write_ha_state"):
+        assert await entity.async_lock() is True
+
+    # There is nothing to lock: the door already sprang shut behind you.
+    assert entity.is_locked is True
+    device.async_call_action.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_pending_relock_is_cancelled_by_a_new_unlatch(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = momentary_entity(device)
+    device.async_call_action, _ = call_action_stub({"code": 0, "out": ["s3cret", 1, "ok"]})
+    device.update_main_status = AsyncMock()
+    cancelled = []
+
+    with patch("custom_components.xiaomi_miot.lock.async_call_later") as later:
+        later.side_effect = lambda *a: lambda: cancelled.append(True)
+        with patch.object(MomentaryLockEntity, "_async_write_ha_state"):
+            await entity.async_unlock()
+            await entity.async_unlock()
+
+    # The first timer must not lock the entity while the second unlatch stands.
+    assert cancelled == [True]
+    assert entity.is_locked is False
+
+
+def test_the_momentary_delay_is_configurable(make_device, load_miot_spec):
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"),
+        model=MODEL,
+        customizes={"lock_actions": "remote_unlock_e", "momentary_seconds": 12},
+    )
+    assert momentary_entity(device).momentary_seconds == 12
+
+
+def test_a_broken_momentary_delay_falls_back_to_the_default(make_device, load_miot_spec):
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"),
+        model=MODEL,
+        customizes={"lock_actions": "remote_unlock_e", "momentary_seconds": "soon"},
+    )
+    assert momentary_entity(device).momentary_seconds == 5
