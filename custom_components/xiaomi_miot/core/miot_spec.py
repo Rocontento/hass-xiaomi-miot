@@ -77,6 +77,19 @@ SPEC_ERRORS = {
 }
 
 
+# Placeholders vendors leave behind in the specs they did not translate, they
+# carry no meaning and must not end up as an entity name.
+PLACEHOLDER_DESCRIPTIONS = ['', 'na', 'n/a', 'null', 'none', 'undefined', '-', '--']
+
+
+def valid_description(des):
+    """The description unless it is a placeholder, then nothing."""
+    if des is None:
+        return ''
+    des = f'{des}'.strip()
+    return '' if des.lower() in PLACEHOLDER_DESCRIPTIONS else des
+
+
 # https://iot.mi.com/new/doc/tools-and-resources/design/spec/overall
 # https://iot.mi.com/new/doc/tools-and-resources/design/spec/xiaoai
 # https://iot.mi.com/new/doc/tools-and-resources/design/spec/shortcut
@@ -86,7 +99,7 @@ class MiotSpecInstance:
         self.iid = int(dat.get('iid') or 0)
         self.type = str(dat.get('type') or '')
         self.name = self.name_by_type(self.type)
-        self.description = dat.get('description') or ''
+        self.description = valid_description(dat.get('description'))
 
     @staticmethod
     def format_name(nam):
@@ -277,8 +290,7 @@ class MiotSpec(MiotSpecInstance):
         langs = get_translation_langs(self.hass, list(self.spec_translations.keys()))
         for lang in langs:
             dic = self.spec_translations.get(lang) or {}
-            val = dic.get(key)
-            if val != None:
+            if val := valid_description(dic.get(key)):
                 return val
         return None
 
@@ -822,12 +834,13 @@ class MiotProperty(MiotSpecInstance):
         rls = []
         for v in self.value_list:
             vid = v.get('value')
-            des = str(self.get_translation(v.get('description'), viid=vid))
+            des = valid_description(self.get_translation(v.get('description'), viid=vid))
             if lower:
                 des = des.lower()
+            if des == '':
+                # An untranslated value is still better shown as its raw number.
+                des = str(vid)
             if val is None:
-                if des == '':
-                    des = str(vid)
                 rls.append(des)
             elif val == vid:
                 return des

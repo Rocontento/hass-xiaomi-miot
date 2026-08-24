@@ -169,6 +169,8 @@ lock.your_entity_id:
                                  # only accept a secret they hand out themselves
   unlock_action_params: ['']     # Input params of the unlock action, overrides `secret_action`
   lock_state_property: lock_state # Miot property holding the lock state
+  locked_states: Lock             # Values of the state property meaning locked
+  unlocked_states: Unlock,LockTongueProtruding # ...and meaning unlocked
   code_format: '^\d{4,8}$'       # Ask for a code and send it as the string input of the action
 
 media_player.mitv_entity_id:

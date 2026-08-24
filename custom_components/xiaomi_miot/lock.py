@@ -1,5 +1,6 @@
 """Support lock entity for Xiaomi Miot."""
 import logging
+import re
 
 from homeassistant.components.lock import (
     DOMAIN as ENTITY_DOMAIN,
@@ -45,6 +46,11 @@ REJECTION_VALUES = ['fail', 'failed', 'failure']
 # order, and the output properties carrying the secret they answer with.
 DEFAULT_SECRET_ACTIONS = ['get_lockmsg', 'get_lock_msg', 'get_secret']
 SECRET_PROPERTIES = ['secret', 'token', 'key']
+
+# A rejected command can come back with a fresh token to retry with instead of
+# with an error message, the output property carrying it and what one looks like.
+CHALLENGE_PROPERTIES = ['msg', 'message', 'secret', 'token']
+CHALLENGE_PATTERN = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -180,6 +186,12 @@ class LockEntity(XEntity, BaseEntity):
         params = self.action_params(action, key, code)
         result = await self.async_call_action(action, params)
         outs, rejected = self.action_result(action, result)
+        if rejected and (challenge := self.action_challenge(outs)):
+            # The lock answered with a token rather than an error, it wants the
+            # command signed with it. Retried once, a second rejection is real.
+            params = self.action_params(action, key, challenge)
+            result = await self.async_call_action(action, params)
+            outs, rejected = self.action_result(action, result)
         # The miot call can succeed while the lock itself refuses the action,
         # eg. when it does not accept the secret sent as the action input.
         success = bool(result) and result.is_success and not rejected
@@ -223,6 +235,17 @@ class LockEntity(XEntity, BaseEntity):
             value = outs.get(name)
             if value not in (None, ''):
                 return f'{value}'
+        return None
+
+    @staticmethod
+    def action_challenge(outs):
+        """A rejection carrying a token to retry with, not an error message."""
+        if not isinstance(outs, dict):
+            return None
+        for name in CHALLENGE_PROPERTIES:
+            value = outs.get(name)
+            if isinstance(value, str) and CHALLENGE_PATTERN.match(value):
+                return value
         return None
 
     def action_result(self, action: MiotAction, result):
