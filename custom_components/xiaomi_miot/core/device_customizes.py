@@ -2409,6 +2409,36 @@ DEVICE_CUSTOMIZES = {
         'state_class': 'measurement',
         'unit_of_measurement': '%',
     },
+    # Xiaomi Self-Install Smart Lock, unlocking retracts the tongue for `lock_tongue_time`
+    # seconds, so the unlock action is also what Home Assistant calls "open" (unlatch).
+    'xiaomi.lock.d100e': {
+        'miot_cloud_action': True,
+        'lock_action': 'remote_lock',
+        'unlock_action': 'remote_unlock_e',
+        'open_action': 'remote_unlock_e',
+        'sensor_properties': 'lock_information.lock_state,lock_information.lock_abnormal_status,'
+                             'lock_information.lock_calibration,battery.lock_mah,battery.keypad_mah,'
+                             'keyboard.keypad_state,keyboard.ble_signal',
+        'binary_sensor_properties': 'lock_information.wifi_status,keyboard.ble_state',
+        'switch_properties': 'convenient_service.close_door_lock,convenient_service.unlock_auto_lock,'
+                             'convenient_service.voice_unlock,keypad_management.lock_key_state,'
+                             'keypad_management.close_door_enable,keypad_management.forbidden_keypad_s,'
+                             'keypad_management.backlight,keypad_management.warning_tone,'
+                             'notice_management.allow_notification',
+        'number_properties': 'lock_unlock.lock_tongue_time,convenient_service.close_door_lock_time,'
+                             'convenient_service.unlock_autolock_time',
+        'select_properties': 'lock_information.lock_type,alarm.warning_tone,alarm.alarm_tone,'
+                             'alarm.warring_time,keypad_management.error_tip',
+        'button_actions': 'emergency_unlock,ble_lock,ble_unlock,check_lock_mah,check_keypad_mah',
+    },
+    'xiaomi.lock.d100e:lock_mah': {
+        'device_class': 'battery',
+        'state_class': 'measurement',
+    },
+    'xiaomi.lock.d100e:keypad_mah': {
+        'device_class': 'battery',
+        'state_class': 'measurement',
+    },
     'xiaomi.kettle.v20': {
         'button_actions': 'stop_work',
         'binary_sensor_properties': 'kettle_lifting',
@@ -3704,6 +3734,14 @@ GLOBAL_CONVERTERS = [
             {'props': ['horizontal_swing', 'fan_control.horizontal_swing'], 'domain': 'switch'},
             {'props': ['vertical_swing', 'fan_control.vertical_swing'], 'domain': 'switch'},
             {'props': ['*.uv', 'heater', 'eco', 'dryer', 'sleep_mode', 'soft_wind'], 'domain': 'switch'},
+        ],
+    },
+    {
+        'class': MiotLockConv,
+        'services': ['lock', 'lock_information'],
+        'converters' : [
+            {'props': ['lock_state', '*.lock_state']},
+            {'props': ['*.door_state'], 'all_services': True},
         ],
     },
     {

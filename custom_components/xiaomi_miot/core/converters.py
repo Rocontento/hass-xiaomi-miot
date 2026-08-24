@@ -325,6 +325,27 @@ class MiotCoverConv(MiotServiceConv):
         super().__post_init__()
 
 @dataclass
+class MiotLockConv(MiotServiceConv):
+    domain: str = 'lock'
+
+    def __post_init__(self):
+        if not self.main_props:
+            self.main_props = ['lock_state', 'state', 'operation_method', 'operation_id']
+        super().__post_init__()
+        if self.prop and not self.service_can_actuate():
+            # Without an action to drive it a lock entity would be read only, let the
+            # device drop this converter and keep the lock as a plain sensor.
+            self.prop = None
+
+    def service_can_actuate(self):
+        if not self.service:
+            return False
+        for srv in self.service.spec.services.values():
+            if srv.get_action('*lock*', '*unlatch*', '*open*'):
+                return True
+        return False
+
+@dataclass
 class MiotCameraConv(MiotServiceConv):
     domain: str = 'camera'
 
