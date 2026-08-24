@@ -8,6 +8,7 @@ from homeassistant.components.lock import (
     LockEntityFeature,
 )
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 
 from . import (
     DOMAIN,
@@ -51,6 +52,9 @@ SECRET_PROPERTIES = ['secret', 'token', 'key']
 # with an error message, the output property carrying it and what one looks like.
 CHALLENGE_PROPERTIES = ['msg', 'message', 'secret', 'token']
 CHALLENGE_PATTERN = re.compile(r'^[A-Za-z0-9+/_-]{16,}={0,2}$')
+
+# Seconds a momentary lock shows itself unlocked before going back to locked.
+DEFAULT_MOMENTARY_SECONDS = 5
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -306,4 +310,83 @@ class LockEntity(XEntity, BaseEntity):
         return 0
 
 
+class MomentaryLockEntity(LockEntity):
+    """A lock entity that only ever runs one action, then locks itself again.
+
+    Built from `lock_actions`, for an unlatch that has no state of its own: the
+    door springs shut behind you, so there is nothing to read back. Home apps
+    speaking through a bridge only offer lock and unlock, and this gives them a
+    single meaningful tap.
+    """
+    _unlisten = None
+
+    def on_init(self):
+        self._attr_available = True
+        # The action is the whole entity, name it after what it does.
+        self._attr_name = 'Unlatch'
+        self._attr_translation_key = None
+        self._attr_is_locked = True
+        self._attr_supported_features = LockEntityFeature(0)
+        self._act_lock = None
+        self._act_unlock = self._miot_action
+        self._act_open = self._miot_action
+        self._act_secret = self.find_action(self.custom_config_list('secret_action') or DEFAULT_SECRET_ACTIONS)
+        if fmt := self.custom_config('code_format'):
+            self._attr_code_format = fmt
+        self._attr_extra_state_attributes.update({
+            'unlock_action': self._miot_action.full_name,
+            'momentary_seconds': self.momentary_seconds,
+        })
+
+    @property
+    def momentary_seconds(self):
+        try:
+            return max(1, int(self.custom_config('momentary_seconds', DEFAULT_MOMENTARY_SECONDS)))
+        except (TypeError, ValueError):
+            return DEFAULT_MOMENTARY_SECONDS
+
+    def set_state(self, data: dict):
+        """The state is ours alone, no property of the device reflects it."""
+
+    async def async_lock(self, **kwargs):
+        self.relock()
+        self._async_write_ha_state()
+        return True
+
+    async def async_open(self, **kwargs):
+        return await self.async_unlock(**kwargs)
+
+    async def async_unlock(self, **kwargs):
+        self.cancel_relock()
+        success = await self.async_run_action(self._act_unlock, 'unlock', **kwargs)
+        if not success:
+            self.relock()
+        else:
+            self._attr_is_locked = False
+            self._unlisten = async_call_later(self.hass, self.momentary_seconds, self.async_relock)
+        self._async_write_ha_state()
+        return success
+
+    async def async_relock(self, _now=None):
+        self._unlisten = None
+        self.relock()
+        self._async_write_ha_state()
+
+    def relock(self):
+        self.cancel_relock()
+        self._attr_is_locked = True
+        self._attr_is_locking = False
+        self._attr_is_unlocking = False
+
+    def cancel_relock(self):
+        if self._unlisten:
+            self._unlisten()
+            self._unlisten = None
+
+    async def async_will_remove_from_hass(self):
+        self.cancel_relock()
+        await super().async_will_remove_from_hass()
+
+
 XEntity.CLS[ENTITY_DOMAIN] = LockEntity
+XEntity.CLS['lock_action'] = MomentaryLockEntity

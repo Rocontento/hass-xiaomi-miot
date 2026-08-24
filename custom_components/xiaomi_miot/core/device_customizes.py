@@ -2437,6 +2437,10 @@ DEVICE_CUSTOMIZES = {
         'select_properties': 'lock_information.lock_type,alarm.warning_tone,alarm.alarm_tone,'
                              'alarm.warring_time,keypad_management.error_tip',
         'button_actions': 'emergency_unlock,ble_lock,ble_unlock,check_lock_mah,check_keypad_mah',
+        # A second, momentary lock entity: one tap unlatches and it locks itself
+        # again. Home apps reached through a bridge only offer lock and unlock,
+        # this gives them the unlatch the main entity keeps behind `open`.
+        'lock_actions': 'remote_unlock_e',
     },
     'xiaomi.lock.d100e:lock_mah': {
         'device_class': 'battery',

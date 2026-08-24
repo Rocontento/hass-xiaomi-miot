@@ -140,6 +140,8 @@ domain.parent_entity_id:
   select_properties: mode
   fan_properties: mode,fan_level
   cover_properties: motor_control
+  lock_actions: remote_unlock_e # Miot actions, each becomes a momentary lock entity
+                                # that unlatches and then locks itself again
 
 light.your_entity_id:
   color_temp_reverse: false # Reverse color temperature (Requires reload config entry)
@@ -172,6 +174,7 @@ lock.your_entity_id:
   locked_states: Lock             # Values of the state property meaning locked
   unlocked_states: Unlock,LockTongueProtruding # ...and meaning unlocked
   code_format: '^\d{4,8}$'       # Ask for a code and send it as the string input of the action
+  momentary_seconds: 5           # Seconds a `lock_actions` entity stays unlocked
 
 media_player.mitv_entity_id:
   bind_xiaoai: media_player.xiaoai_entity_id # Bind xiaoai speaker for turn on TV
