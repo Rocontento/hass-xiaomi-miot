@@ -2419,6 +2419,10 @@ DEVICE_CUSTOMIZES = {
         # `remote-lock` and `remote-unlock-e` only accept a secret the lock hands
         # out itself, `get-lockmsg` is the action answering with it.
         'secret_action': 'get_lockmsg',
+        # `LockTongueProtruding` is the spring latch resting against the frame with
+        # the bolt already withdrawn: the door is unlocked, it just is not unlatched.
+        'locked_states': 'Lock',
+        'unlocked_states': 'Unlock,LockTongueProtruding',
         'sensor_properties': 'lock_information.lock_state,lock_information.lock_abnormal_status,'
                              'lock_information.lock_calibration,battery.lock_mah,battery.keypad_mah,'
                              'keyboard.keypad_state,keyboard.ble_signal',
