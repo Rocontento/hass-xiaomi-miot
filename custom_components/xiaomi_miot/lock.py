@@ -35,6 +35,11 @@ DEFAULT_LOCKED_VALUES = ['Lock', 'Locked', 'LockTongueProtruding']
 DEFAULT_UNLOCKED_VALUES = ['Unlock', 'Unlocked', 'Open', 'Opened']
 DEFAULT_JAMMED_VALUES = ['Abnormal', 'Jammed', 'LockStalled']
 
+# Output properties telling whether the lock accepted the action, and the values
+# that mean it did not. The miot call itself still returns a success code then.
+REJECTION_PROPERTIES = ['res', 'result', 'status']
+REJECTION_VALUES = ['fail', 'failed', 'failure']
+
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     HassEntry.init(hass, config_entry).new_adder(ENTITY_DOMAIN, async_add_entities)
@@ -162,10 +167,13 @@ class LockEntity(XEntity, BaseEntity):
         self._async_write_ha_state()
 
         result = await self.async_call_action(action, params)
-        success = bool(result) and result.is_success
-        self._attr_extra_state_attributes[f'{key}_result'] = str(result)
+        outs, rejected = self.action_result(action, result)
+        # The miot call can succeed while the lock itself refuses the action,
+        # eg. when it does not accept the secret sent as the action input.
+        success = bool(result) and result.is_success and not rejected
+        self._attr_extra_state_attributes[f'{key}_result'] = outs if outs else str(result)
         if not success:
-            self.log.warning('%s: Lock action %s failed: %s', self.entity_id, action.full_name, result)
+            self.log.warning('%s: Lock action %s failed: %s', self.entity_id, action.full_name, outs or result)
             self._attr_is_locking = False
             self._attr_is_unlocking = False
         self._async_write_ha_state()
@@ -173,6 +181,24 @@ class LockEntity(XEntity, BaseEntity):
         if success:
             await self.device.update_main_status()
         return success
+
+    def action_result(self, action: MiotAction, result):
+        """Locks answer with a result code and a message, decode them for the attributes."""
+        out = result.get('out') if result else None
+        if not isinstance(out, list) or len(out) != len(action.out):
+            return None, False
+        decoded = {}
+        rejected = False
+        for piid, value in zip(action.out, out):
+            prop = action.service.properties.get(piid)
+            if not prop:
+                continue
+            if prop.value_list and value is not None:
+                value = prop.list_description(value)
+                if prop.in_list(REJECTION_PROPERTIES) and f'{value}'.lower() in REJECTION_VALUES:
+                    rejected = True
+            decoded[prop.name] = value
+        return decoded, rejected
 
     def action_params(self, action: MiotAction, key, code=None):
         """Some locks require a verification secret as the action input."""

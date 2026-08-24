@@ -192,6 +192,51 @@ async def test_failed_action_keeps_state_and_reports_the_result(make_device, loa
 
 
 @pytest.mark.asyncio
+async def test_lock_refusal_is_detected_even_when_the_miot_call_succeeds(
+    make_device,
+    load_miot_spec,
+):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    entity.set_state({entity._conv_state.full_name: 0})
+    # `remote-unlock-e` answers with `res` (0 Fail) and `msg`.
+    device.async_call_action = AsyncMock(
+        return_value=MiotResult({"code": 0, "out": [0, "secret invalid"]}),
+    )
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        await entity.async_unlock()
+
+    assert entity._attr_extra_state_attributes["unlock_result"] == {
+        "res": "Fail",
+        "msg": "secret invalid",
+    }
+    assert entity.is_locked is True
+    assert entity.is_unlocking is False
+    device.update_main_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lock_acceptance_is_decoded_into_the_attributes(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.async_call_action = AsyncMock(
+        return_value=MiotResult({"code": 0, "out": [1, "ok"]}),
+    )
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        await entity.async_open()
+
+    assert entity._attr_extra_state_attributes["open_result"] == {
+        "res": "Success",
+        "msg": "ok",
+    }
+    device.update_main_status.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_missing_action_raises(make_device, load_miot_spec):
     device = model_device(make_device, load_miot_spec)
     entity = lock_entity(device)
