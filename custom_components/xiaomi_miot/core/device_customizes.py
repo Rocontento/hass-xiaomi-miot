@@ -2412,7 +2412,10 @@ DEVICE_CUSTOMIZES = {
     # Xiaomi Self-Install Smart Lock, unlocking retracts the tongue for `lock_tongue_time`
     # seconds, so the unlock action is also what Home Assistant calls "open" (unlatch).
     'xiaomi.lock.d100e': {
-        'miot_cloud_action': True,
+        # The lock answers miot over the LAN, so drive it locally and keep the
+        # cloud as the fallback for when its radio is asleep.
+        'miot_local': True,
+        'auto_cloud': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',

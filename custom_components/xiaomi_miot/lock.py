@@ -188,13 +188,13 @@ class LockEntity(XEntity, BaseEntity):
         if code is None and self.needs_secret(action, key):
             code = await self.async_read_secret()
         params = self.action_params(action, key, code)
-        result = await self.async_call_action(action, params)
+        result = await self.async_lock_action(action, params)
         outs, rejected = self.action_result(action, result)
         if rejected and (challenge := self.action_challenge(outs)):
             # The lock answered with a token rather than an error, it wants the
             # command signed with it. Retried once, a second rejection is real.
             params = self.action_params(action, key, challenge)
-            result = await self.async_call_action(action, params)
+            result = await self.async_lock_action(action, params)
             outs, rejected = self.action_result(action, result)
         # The miot call can succeed while the lock itself refuses the action,
         # eg. when it does not accept the secret sent as the action input.
@@ -227,7 +227,7 @@ class LockEntity(XEntity, BaseEntity):
         The value is a short lived credential, it is deliberately never logged
         nor published as an entity attribute.
         """
-        result = await self.async_call_action(self._act_secret, [])
+        result = await self.async_lock_action(self._act_secret, [])
         outs, rejected = self.action_result(self._act_secret, result)
         if not result or not result.is_success or rejected or not outs:
             self.log.warning(
@@ -240,6 +240,27 @@ class LockEntity(XEntity, BaseEntity):
             if value not in (None, ''):
                 return f'{value}'
         return None
+
+    async def async_lock_action(self, action: MiotAction, params):
+        """Run the action, over the cloud when the LAN call never got through.
+
+        A transport failure means the lock never heard the command, so the
+        retry cannot repeat anything it already did. A command the lock did
+        hear and refused is left alone.
+        """
+        result = await self.async_call_action(action, params)
+        if self.transport_failed(result) and self.device.cloud:
+            self.log.info(
+                '%s: %s did not get through over the LAN (%s), trying the cloud',
+                self.entity_id, action.full_name, result.error,
+            )
+            result = await self.async_call_action(action, params, cloud=True)
+        return result
+
+    @staticmethod
+    def transport_failed(result):
+        """The command never reached the lock, as opposed to being refused."""
+        return bool(result) and result.code == -1 and bool(result.error)
 
     @staticmethod
     def action_challenge(outs):
