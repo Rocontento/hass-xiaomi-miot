@@ -82,6 +82,7 @@ class LockEntity(XEntity, BaseEntity):
     _locked_values = None
     _unlocked_values = None
     _jammed_values = None
+    _prefer_cloud = False
 
     def on_init(self):
         self._attr_available = self.device.available
@@ -179,7 +180,10 @@ class LockEntity(XEntity, BaseEntity):
     async def async_run_action(self, action: MiotAction, key, **kwargs):
         if not action:
             raise HomeAssistantError(f'No miot action found to {key} {self.entity_id}')
-        # These locks are driven through the cloud, show the transition while waiting.
+        # Each command is a sequence of calls sharing one short lived secret, so
+        # the transport is chosen once and the rest of the sequence follows it.
+        self._prefer_cloud = False
+        # A command can take a moment to reach the lock, show the transition.
         self._attr_is_locking = key == 'lock'
         self._attr_is_unlocking = key != 'lock'
         self._async_write_ha_state()
@@ -247,13 +251,21 @@ class LockEntity(XEntity, BaseEntity):
         A transport failure means the lock never heard the command, so the
         retry cannot repeat anything it already did. A command the lock did
         hear and refused is left alone.
+
+        Once the LAN has failed the rest of the sequence goes straight to the
+        cloud. Spending another LAN timeout on the command after reading the
+        secret can outlast the secret itself, and the lock then refuses a
+        command that was authorised correctly.
         """
+        if self._prefer_cloud and self.device.cloud:
+            return await self.async_call_action(action, params, cloud=True)
         result = await self.async_call_action(action, params)
         if self.transport_failed(result) and self.device.cloud:
             self.log.info(
                 '%s: %s did not get through over the LAN (%s), trying the cloud',
                 self.entity_id, action.full_name, result.error,
             )
+            self._prefer_cloud = True
             result = await self.async_call_action(action, params, cloud=True)
         return result
 

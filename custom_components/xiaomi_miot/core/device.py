@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import copy
 import re
@@ -802,6 +803,11 @@ class Device(CustomConfigHelper):
             return False
         return self.custom_config_bool('auto_cloud')
 
+    @property
+    def local_busy(self):
+        """Whether a request is already on its way to the device over the lan."""
+        return bool(self.local) and self.local.lan_busy
+
     async def get_parent_device(self):
         if not (pid := self.info.parent_id):
             return None
@@ -1145,6 +1151,12 @@ class Device(CustomConfigHelper):
             cloud = self.cloud
         elif self.use_cloud:
             cloud = self.cloud
+        elif self.local_busy and self.cloud and not self.local_only:
+            # A status update is already holding the lan. Queueing behind it costs
+            # seconds the device may not give back, and a command is what the user
+            # is waiting for, so it goes over the cloud instead of waiting its turn.
+            self.log.debug('Call miot action %s over the cloud, the lan is busy', pms)
+            cloud = self.cloud
         try:
             if self.miio2miot and self.miio2miot.has_setter(siid, aiid=aiid):
                 result = await self.miio2miot.async_call_action(self.local, siid, aiid, params)
@@ -1380,6 +1392,16 @@ class MiotDevice():
         self.hass = hass
         self.miio = miio
         self.log = logger or logging.getLogger(__name__)
+        # The miio session is a single udp conversation with the device, and its
+        # handshake timestamp is kept on the connection. Two requests running at
+        # once trample each other, and small battery devices answer neither. So
+        # only one request is allowed onto the lan at a time.
+        self.lan_lock = asyncio.Lock()
+
+    @property
+    def lan_busy(self):
+        """Whether a request is already using the miio session."""
+        return self.lan_lock.locked()
 
     @property
     def host(self):
@@ -1399,7 +1421,8 @@ class MiotDevice():
         return MiotDevice(device.hass, miio, device.log)
 
     async def async_info(self):
-        resp = await self.miio.send('miIO.info', tries=2)
+        async with self.lan_lock:
+            resp = await self.miio.send('miIO.info', tries=2)
         self.handle_response(resp, False)
         info = resp.get('result', {}) if resp else resp
         if not info:
@@ -1407,7 +1430,8 @@ class MiotDevice():
         return MiioInfo(info)
 
     async def async_send(self, *args, **kwargs):
-        resp = await self.miio.send(*args, **kwargs)
+        async with self.lan_lock:
+            resp = await self.miio.send(*args, **kwargs)
         self.handle_response(resp)
         try:
             return resp['result']
@@ -1419,7 +1443,8 @@ class MiotDevice():
             chunk = 15
         results = []
         for i in range(0, len(params), chunk):
-            resp = await self.miio.send(method, params[i : i + chunk])
+            async with self.lan_lock:
+                resp = await self.miio.send(method, params[i : i + chunk])
             if not results:
                 self.handle_response(resp)
             if not isinstance(resp, dict) or 'result' not in resp:
