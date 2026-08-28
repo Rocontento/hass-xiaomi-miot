@@ -18,6 +18,11 @@ from custom_components.xiaomi_miot.core.miot_spec import MiotResult
 MODEL = "xiaomi.lock.d100e"
 GET_LOCKMSG_AIID = 10
 
+# A model that only asks to be driven locally, for the tests that are about the
+# routing itself rather than about this particular lock.
+LAN_MODEL = "test.lock.lan"
+LAN_CUSTOMIZES = {"miot_local": True}
+
 
 class MiioStub:
     """Records how many requests are in flight at the same time."""
@@ -225,3 +230,102 @@ async def test_each_command_starts_over_on_the_lan(make_device, load_miot_spec):
         assert await entity.async_unlock() is True
 
     assert calls == [False, False]
+
+
+def d100e_lock(make_device, load_miot_spec):
+    from custom_components.xiaomi_miot.core.converters import MiotLockConv
+
+    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    conv = next(c for c in device.converters if isinstance(c, MiotLockConv))
+    return device, LockEntity(device, conv)
+
+
+def transport_stub(secret_from, calls):
+    """Answers a secret over `secret_from`, and records how each call was pinned."""
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        pinned = "cloud" if kwargs.get("cloud") else "local" if kwargs.get("local") else None
+        calls.append((aiid, pinned))
+        if aiid == GET_LOCKMSG_AIID:
+            result = MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
+            result.updater = secret_from
+            return result
+        result = MiotResult({"code": 0, "out": [1, "ok"]})
+        result.updater = pinned or secret_from
+        return result
+
+    return call_action
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("secret_from", ["local", "cloud"])
+async def test_a_command_is_spent_where_its_secret_came_from(
+    make_device, load_miot_spec, secret_from
+):
+    """The lock hands out the secret and expects it back. Reading it one way and
+    spending it the other asks it to honour a credential from a conversation it
+    was not part of, and the routing may change its mind between the two calls."""
+    device, entity = d100e_lock(make_device, load_miot_spec)
+    device.cloud = object()
+    calls = []
+    device.async_call_action = transport_stub(secret_from, calls)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    # The secret read picks the transport, the command is pinned to it.
+    assert calls == [(GET_LOCKMSG_AIID, None), (1, secret_from)]
+    assert entity.extra_state_attributes["last_transport"] == secret_from
+
+
+@pytest.mark.asyncio
+async def test_a_transport_failure_still_moves_the_whole_command(
+    make_device, load_miot_spec
+):
+    device, entity = d100e_lock(make_device, load_miot_spec)
+    device.cloud = object()
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        calls.append((aiid, bool(kwargs.get("cloud"))))
+        if not kwargs.get("cloud"):
+            return MiotResult({}, code=-1, error="No response from the device")
+        result = MiotResult(
+            {"code": 0, "out": ["s3cret", 1, "ok"] if aiid == GET_LOCKMSG_AIID else [1, "ok"]}
+        )
+        result.updater = "cloud"
+        return result
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert calls == [(GET_LOCKMSG_AIID, False), (GET_LOCKMSG_AIID, True), (1, True)]
+    assert entity.extra_state_attributes["last_transport"] == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_call_waits_for_the_lan_rather_than_leaving_it(
+    hass, make_device, load_miot_spec
+):
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"), model=LAN_MODEL, customizes=LAN_CUSTOMIZES
+    )
+    set_conn_mode(device, "auto")
+    device.local = miot_device(hass)
+    device.cloud = CloudStub()
+    device._local_state = True
+
+    await device.local.lan_lock.acquire()
+    task = asyncio.ensure_future(device.async_call_action(18, 1, ["s3cret"], local=True))
+    await asyncio.sleep(0)
+    # Left to itself it would have gone to the cloud, being pinned it waits.
+    assert not task.done()
+    device.local.lan_lock.release()
+    result = await task
+
+    assert device.cloud.actions == []
+    assert result.updater == "local"

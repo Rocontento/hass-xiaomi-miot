@@ -82,7 +82,7 @@ class LockEntity(XEntity, BaseEntity):
     _locked_values = None
     _unlocked_values = None
     _jammed_values = None
-    _prefer_cloud = False
+    _transport = None
 
     def on_init(self):
         self._attr_available = self.device.available
@@ -182,7 +182,7 @@ class LockEntity(XEntity, BaseEntity):
             raise HomeAssistantError(f'No miot action found to {key} {self.entity_id}')
         # Each command is a sequence of calls sharing one short lived secret, so
         # the transport is chosen once and the rest of the sequence follows it.
-        self._prefer_cloud = False
+        self._transport = None
         # A command can take a moment to reach the lock, show the transition.
         self._attr_is_locking = key == 'lock'
         self._attr_is_unlocking = key != 'lock'
@@ -204,8 +204,24 @@ class LockEntity(XEntity, BaseEntity):
         # eg. when it does not accept the secret sent as the action input.
         success = bool(result) and result.is_success and not rejected
         self._attr_extra_state_attributes[f'{key}_result'] = outs if outs else str(result)
+        # Which way the command went. The routing has several opinions and none of
+        # them show, so a command failing on one transport and working on the other
+        # is otherwise only visible by turning on debug logging.
+        self._attr_extra_state_attributes['last_transport'] = result.updater if result else None
+        if success and action.out and not outs:
+            # The action is declared to answer with a result and did not. The call
+            # was accepted, but nothing says the lock acted on it, so do not let
+            # that pass in silence.
+            self.log.warning(
+                '%s: Lock action %s over the %s was accepted but answered nothing '
+                'readable: %s', self.entity_id, action.full_name, result.updater, result,
+            )
         if not success:
-            self.log.warning('%s: Lock action %s failed: %s', self.entity_id, action.full_name, outs or result)
+            self.log.warning(
+                '%s: Lock action %s over the %s failed: %s',
+                self.entity_id, action.full_name, result.updater if result else None,
+                outs or result,
+            )
             self._attr_is_locking = False
             self._attr_is_unlocking = False
         self._async_write_ha_state()
@@ -246,28 +262,38 @@ class LockEntity(XEntity, BaseEntity):
         return None
 
     async def async_lock_action(self, action: MiotAction, params):
-        """Run the action, over the cloud when the LAN call never got through.
+        """Run the action, keeping the whole command on one transport.
 
-        A transport failure means the lock never heard the command, so the
-        retry cannot repeat anything it already did. A command the lock did
-        hear and refused is left alone.
+        The lock hands out a secret and expects it back. Reading it one way and
+        spending it the other is asking the lock to honour a credential from a
+        conversation it was not part of, and the routing in
+        `Device.async_call_action` is free to change its mind between two calls
+        a fraction of a second apart. So the first call of a command picks the
+        transport and the rest of the command is pinned to it.
 
-        Once the LAN has failed the rest of the sequence goes straight to the
-        cloud. Spending another LAN timeout on the command after reading the
-        secret can outlast the secret itself, and the lock then refuses a
-        command that was authorised correctly.
+        The exception is a transport failure, which means the lock never heard
+        the command: nothing it already did can be repeated, so that one is
+        retried over the cloud and the command carries on from there.
         """
-        if self._prefer_cloud and self.device.cloud:
-            return await self.async_call_action(action, params, cloud=True)
-        result = await self.async_call_action(action, params)
-        if self.transport_failed(result) and self.device.cloud:
+        result = await self.async_call_action(action, params, **self.transport_kwargs())
+        if self.transport_failed(result) and self._transport != 'cloud' and self.device.cloud:
             self.log.info(
                 '%s: %s did not get through over the LAN (%s), trying the cloud',
                 self.entity_id, action.full_name, result.error,
             )
-            self._prefer_cloud = True
+            self._transport = 'cloud'
             result = await self.async_call_action(action, params, cloud=True)
+        elif self._transport is None:
+            self._transport = result.updater if result else None
         return result
+
+    def transport_kwargs(self):
+        """Pin the call to the transport the command started on, if any."""
+        if self._transport == 'cloud':
+            return {'cloud': True}
+        if self._transport == 'local':
+            return {'local': True}
+        return {}
 
     @staticmethod
     def transport_failed(result):

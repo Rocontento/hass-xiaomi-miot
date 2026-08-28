@@ -1145,6 +1145,10 @@ class Device(CustomConfigHelper):
         cloud = None
         if kwargs.get('cloud'):
             cloud = self.cloud
+        elif kwargs.get('local') and self.local:
+            # Pinned to the lan by the caller. A credential handed out on one
+            # channel is spent on that channel, whatever the routing below thinks.
+            cloud = None
         elif self.custom_config_bool('miot_cloud_action'):
             cloud = self.cloud
         elif self.auto_cloud and not self._local_state:
@@ -1157,9 +1161,14 @@ class Device(CustomConfigHelper):
             # is waiting for, so it goes over the cloud instead of waiting its turn.
             self.log.debug('Call miot action %s over the cloud, the lan is busy', pms)
             cloud = self.cloud
+        # Which way the command actually went. The routing above has several
+        # opinions and none of them are visible from the outside, which makes a
+        # command that fails on one transport and works on the other hard to read.
+        updater = 'cloud' if cloud else 'local'
         try:
             if self.miio2miot and self.miio2miot.has_setter(siid, aiid=aiid):
                 result = await self.miio2miot.async_call_action(self.local, siid, aiid, params)
+                updater = 'miio'
             elif cloud:
                 result = await cloud.async_do_action(pms)
             else:
@@ -1170,16 +1179,17 @@ class Device(CustomConfigHelper):
                     pms['in'] = action.in_params(params or [])
                 result = await self.local.async_send('action', pms)
             result = MiotResult(result or {})
+            result.updater = updater
         except (DeviceException, MiCloudException) as exc:
-            self.log.warning('Call miot action %s failed: %s', pms, exc)
-            return MiotResult({}, code=-1, error=str(exc))
+            self.log.warning('Call miot action %s over the %s failed: %s', pms, updater, exc)
+            return MiotResult({}, code=-1, error=str(exc), updater=updater)
         except (TypeError, ValueError) as exc:
-            self.log.warning('Call miot action %s failed: %s, result: %s', pms, exc)
-            return MiotResult({}, code=-1, error=str(exc))
+            self.log.warning('Call miot action %s over the %s failed: %s', pms, updater, exc)
+            return MiotResult({}, code=-1, error=str(exc), updater=updater)
         if result.is_success:
-            self.log.debug('Call miot action %s, result: %s', pms, result)
+            self.log.debug('Call miot action %s over the %s, result: %s', pms, updater, result)
         else:
-            self.log.info('Call miot action %s failed: %s', pms, result)
+            self.log.info('Call miot action %s over the %s failed: %s', pms, updater, result)
         return result
 
     @cached_property
