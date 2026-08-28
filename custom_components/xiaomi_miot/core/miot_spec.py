@@ -1250,8 +1250,12 @@ class MiotResults:
 
 
 class MiotResult:
+    # Which transport carried the call, set by the caller that chose it.
+    updater = None
+
     def __init__(self, result: dict, **kwargs):
         result.update(kwargs)
+        self.updater = result.pop('updater', None)
         self.result = result
         self.code = result.get('code')
         self.value = result.get('value')
