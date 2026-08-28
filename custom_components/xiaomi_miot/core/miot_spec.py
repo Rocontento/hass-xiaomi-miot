@@ -1153,6 +1153,22 @@ class MiotAction(MiotSpecInstance):
             pms.append(val)
         return pms
 
+    def out_values(self, out):
+        """The bare output values, whichever shape they arrived in.
+
+        A local miot action answers `out` as `[{'piid': n, 'value': v}]` while
+        the cloud answers with the values alone. Everything downstream reads the
+        cloud shape, so a local answer is unwrapped into it here, ordered by the
+        outputs the action declares rather than by the order they came back in.
+        """
+        if not isinstance(out, list):
+            return out
+        wrapped = [v for v in out if isinstance(v, dict) and 'piid' in v]
+        if not wrapped:
+            return out
+        by_piid = {v['piid']: v.get('value') for v in wrapped}
+        return [by_piid.get(pid) for pid in self.out]
+
     def out_results(self, out=None):
         kls = []
         for pid in self.out:

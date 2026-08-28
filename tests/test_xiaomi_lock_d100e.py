@@ -409,37 +409,22 @@ def test_complete_entity_set(make_device, load_miot_spec):
 
 
 @pytest.mark.asyncio
-async def test_a_rejection_carrying_a_token_is_retried_with_it(
-    make_device,
-    load_miot_spec,
-):
-    """The lock can refuse a command and answer with a fresh token in `msg`
-    rather than with an error, meaning "sign the retry with this"."""
+async def test_a_rejected_command_is_not_retried(make_device, load_miot_spec):
+    """`msg` carries back what the lock was sent, not a token to sign a retry
+    with. Sending it again would only repeat a command the lock already heard."""
     device = model_device(make_device, load_miot_spec)
     entity = lock_entity(device)
-    calls = []
-
-    async def call_action(siid, aiid, params=None, **kwargs):
-        calls.append((aiid, params))
-        if aiid == GET_LOCKMSG_AIID:
-            return MiotResult({"code": 0, "out": ["stale", 1, "ok"]})
-        if params == ["stale"]:
-            return MiotResult({"code": 0, "out": [0, "3DoiPIFcSanfvJaOfcGL+w=="]})
-        return MiotResult({"code": 0, "out": [1, "ok"]})
-
-    device.async_call_action = call_action
+    device.async_call_action, calls = call_action_stub(
+        {"code": 0, "out": ["s3cret", 1, "ok"]},
+        action_out={"code": 0, "out": [0, "3DoiPIFcSanfvJaOfcGL+w=="]},
+    )
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        assert await entity.async_open() is True
+        assert await entity.async_open() is False
 
-    assert calls == [
-        (GET_LOCKMSG_AIID, []),
-        (REMOTE_UNLOCK_AIID, ["stale"]),
-        (REMOTE_UNLOCK_AIID, ["3DoiPIFcSanfvJaOfcGL+w=="]),
-    ]
-    assert entity._attr_extra_state_attributes["open_result"] == {"res": "Success", "msg": "ok"}
-    device.update_main_status.assert_awaited_once()
+    assert len(calls) == 2
+    device.update_main_status.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -455,17 +440,8 @@ async def test_a_plain_error_message_is_not_retried(make_device, load_miot_spec)
     with patch.object(LockEntity, "_async_write_ha_state"):
         assert await entity.async_unlock() is False
 
-    # `err` is an error, not a token: one secret read and one command, no retry.
     assert len(calls) == 2
 
-
-def test_a_token_is_told_apart_from_an_error_message():
-    assert LockEntity.action_challenge({"msg": "3DoiPIFcSanfvJaOfcGL+w=="})
-    assert LockEntity.action_challenge({"msg": "4R9nwoJplypdARXOkpyTvw=="})
-    assert not LockEntity.action_challenge({"msg": "err"})
-    assert not LockEntity.action_challenge({"msg": "secret invalid"})
-    assert not LockEntity.action_challenge({"msg": ""})
-    assert not LockEntity.action_challenge(None)
 
 
 def momentary_entity(device):
