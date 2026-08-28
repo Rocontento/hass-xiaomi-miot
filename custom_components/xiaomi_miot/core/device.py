@@ -1172,12 +1172,18 @@ class Device(CustomConfigHelper):
             elif cloud:
                 result = await cloud.async_do_action(pms)
             else:
+                action = kwargs.get('action')
+                if not action and self.spec:
+                    action = self.spec.services.get(siid, {}).actions.get(aiid)
                 if not kwargs.get('force_params'):
-                    action = kwargs.get('action')
-                    if not action and self.spec:
-                        action = self.spec.services.get(siid, {}).actions.get(aiid)
                     pms['in'] = action.in_params(params or [])
                 result = await self.local.async_send('action', pms)
+                if action and isinstance(result, dict) and 'out' in result:
+                    # The lan answers `out` as [{'piid': n, 'value': v}] and the
+                    # cloud with the values alone. Everything reading a result
+                    # expects the cloud shape, and one that reads a wrapped value
+                    # as a value hands the device back its own envelope.
+                    result['out'] = action.out_values(result['out'])
             result = MiotResult(result or {})
             result.updater = updater
         except (DeviceException, MiCloudException) as exc:
