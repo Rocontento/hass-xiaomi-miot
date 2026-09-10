@@ -170,6 +170,7 @@ class Device(CustomConfigHelper):
     available = True
     miot_entity = None
     miot_results = None
+    _local_fallback_at = None
     _local_fails = 0
     _local_state = None
     _cloud_fails = 0
@@ -810,6 +811,18 @@ class Device(CustomConfigHelper):
             return False
         return self.custom_config_bool('auto_local')
 
+    def local_fallback_due(self):
+        """Whether the device may be read again while the cloud is unreachable.
+
+        `auto_local_interval` is how long to leave it alone in between, for a
+        device the poll is a real cost to. Unset, every failed cloud read falls
+        through to the device, which is what a mains powered one wants.
+        """
+        seconds = self.custom_config_integer('auto_local_interval') or 0
+        if seconds <= 0 or self._local_fallback_at is None:
+            return True
+        return dt.now() - self._local_fallback_at >= timedelta(seconds=seconds)
+
     @property
     def local_busy(self):
         """Whether a request is already on its way to the device over the lan."""
@@ -855,6 +868,7 @@ class Device(CustomConfigHelper):
         chunk_services=None,
     ) -> MiotResults:
         results = []
+        previous_results = self.miot_results
         self.miot_results = MiotResults()
 
         if use_local is None:
@@ -958,6 +972,15 @@ class Device(CustomConfigHelper):
                     # the device, which is worth having only while the cloud is
                     # answering. With the internet down the device itself is the
                     # only one left who knows, so it is woken after all.
+                    if not self.local_fallback_due():
+                        # Not this time. An outage can last a lot longer than it
+                        # takes to notice one, and a device asked to carry a poll
+                        # it does not normally carry should be asked sparingly.
+                        # Its last known state stands until the next turn comes.
+                        self.log.debug('Cloud request failed, next lan read not due yet. %s', exc)
+                        self.miot_results = previous_results or self.miot_results
+                        return self.miot_results
+                    self._local_fallback_at = dt.now()
                     self.log.warning('Cloud request failed, reading over the lan instead. %s', exc)
                     return await self.update_miot_status(
                         mapping,
