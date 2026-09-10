@@ -132,7 +132,9 @@ class CloudStub:
 async def test_a_command_goes_to_the_cloud_while_the_lan_is_busy(
     hass, make_device, load_miot_spec
 ):
-    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"), model=LAN_MODEL, customizes=LAN_CUSTOMIZES
+    )
     set_conn_mode(device, "auto")
     device.local = miot_device(hass)
     device.cloud = CloudStub()

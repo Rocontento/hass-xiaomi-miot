@@ -10,6 +10,7 @@ from custom_components.xiaomi_miot import (  # noqa: F401
 from custom_components.xiaomi_miot.button import ButtonEntity
 from custom_components.xiaomi_miot.lock import LockEntity, MomentaryLockEntity
 from custom_components.xiaomi_miot.core.converters import MiotLockConv, MiotActionConv
+from custom_components.xiaomi_miot.core.device import MiotDevice
 from custom_components.xiaomi_miot.core.miot_spec import MiotResult
 
 MODEL = "xiaomi.lock.d100e"
@@ -571,13 +572,61 @@ def test_a_broken_momentary_delay_falls_back_to_the_default(make_device, load_mi
     assert momentary_entity(device).momentary_seconds == 5
 
 
-def test_the_lock_is_driven_locally_with_the_cloud_as_a_fallback(make_device, load_miot_spec):
+def test_the_state_comes_from_the_cloud_and_the_commands_from_the_lan(
+    make_device, load_miot_spec
+):
+    """Reads are what the batteries pay for, commands are a handful a day."""
     device = model_device(make_device, load_miot_spec)
 
-    assert device.custom_config_bool("miot_local") is True
-    assert device.custom_config_bool("auto_cloud") is True
-    # Actions are no longer pinned to the cloud, the lock answers miot over the LAN.
+    assert not device.custom_config_bool("miot_local")
     assert not device.custom_config_bool("miot_cloud_action")
+    assert device.custom_config_bool("miot_local_action") is True
+
+
+@pytest.mark.asyncio
+async def test_a_command_goes_to_the_lock_while_the_state_comes_from_the_cloud(
+    hass, make_device, load_miot_spec
+):
+    device = model_device(make_device, load_miot_spec)
+    config = {"username": "tester", "conn_mode": "auto"}
+    device.entry.get_config = lambda key=None, default=None: config.get(key, default)
+
+    sent = []
+
+    class MiioStub:
+        addr = ("192.168.1.6", 54321)
+
+        async def send(self, method, params=None, **kwargs):
+            sent.append((method, params))
+            return {"id": 1, "result": {"code": 0, "out": [{"piid": 3, "value": 1}]}}
+
+    class CloudStub:
+        actions = []
+
+        async def async_do_action(self, pms):
+            self.actions.append(pms)
+            return {"code": 0}
+
+    device.local = MiotDevice(hass, MiioStub())
+    device.cloud = CloudStub()
+
+    # Nothing has been read over the LAN, so `_local_state` is still unset.
+    assert device._local_state is None
+    assert device.use_cloud is True
+
+    result = await device.async_call_action(LOCK_UNLOCK_SIID, REMOTE_UNLOCK_AIID, ["s3cret"])
+
+    assert result.updater == "local"
+    assert device.cloud.actions == []
+    assert sent == [(
+        "action",
+        {
+            "did": "test-device",
+            "siid": LOCK_UNLOCK_SIID,
+            "aiid": REMOTE_UNLOCK_AIID,
+            "in": [{"piid": 2, "value": "s3cret"}],
+        },
+    )]
 
 
 @pytest.mark.asyncio
