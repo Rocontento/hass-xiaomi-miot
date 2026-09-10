@@ -2412,10 +2412,16 @@ DEVICE_CUSTOMIZES = {
     # Xiaomi Self-Install Smart Lock, unlocking retracts the tongue for `lock_tongue_time`
     # seconds, so the unlock action is also what Home Assistant calls "open" (unlatch).
     'xiaomi.lock.d100e': {
-        # The lock answers miot over the LAN, so drive it locally and keep the
-        # cloud as the fallback for when its radio is asleep.
-        'miot_local': True,
-        'auto_cloud': True,
+        # This lock runs on batteries, and every property read over the LAN is a
+        # radio round trip it pays for out of them: polling it directly cost it
+        # around 40% of a set of batteries a week. Its state is read from the
+        # cloud instead, which the lock reports to on its own terms and which
+        # costs it nothing to be asked.
+        #
+        # Commands are the other way round. There are a handful a day, they want
+        # to be immediate, and they should not stop working when the internet
+        # does, so they go straight to the lock over the LAN.
+        'miot_local_action': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',
@@ -2440,13 +2446,12 @@ DEVICE_CUSTOMIZES = {
         'select_properties': 'lock_information.lock_type,alarm.warning_tone,alarm.alarm_tone,'
                              'alarm.warring_time,keypad_management.error_tip',
         'button_actions': 'emergency_unlock,ble_lock,ble_unlock,check_lock_mah,check_keypad_mah',
-        # Only the lock and the door have to be fresh. Everything else is battery
-        # and settings, read rarely so the lock is not woken 46 properties at a
-        # time. The fast chunk is also the one refreshed after each command.
-        'interval_seconds': 900,
-        'chunk_coordinators': [
-            {'interval': 60, 'props': 'lock_information.lock_state,door.door_state'},
-        ],
+        # Reading from the cloud does not wake the lock, so there is nothing left
+        # to ration and the whole spec can go back to the default interval. The
+        # split into a fast chunk and a slow one existed only to keep the radio
+        # quiet, and it kept the state a quarter of an hour behind for its
+        # trouble.
+        #
         # Inherited from `*.lock.*`: a cloud poll for bluetooth lock events, which
         # this wifi lock does not emit. It only tied the lock back to the internet.
         'miio_cloud_props': [],

@@ -127,6 +127,7 @@ domain.your_entity_id:
   miot_cloud: true        # Enable miot cloud for entity (read, write, action)
   miot_cloud_write: true  # Enable miot cloud (only write)
   miot_cloud_action: true # Enable miot cloud (only action)
+  miot_local_action: true # Force actions into the LAN while the state is read from the cloud
   check_lan: true         # Check LAN connection in cloud mode
   miio_properties: power,battery # Get miio properties to state attributes
   miio_cloud_props: prop.power,event.dev_online

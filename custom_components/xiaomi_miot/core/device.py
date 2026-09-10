@@ -1151,6 +1151,12 @@ class Device(CustomConfigHelper):
             cloud = None
         elif self.custom_config_bool('miot_cloud_action'):
             cloud = self.cloud
+        elif self.custom_config_bool('miot_local_action') and self.local and not self.cloud_only:
+            # The counterpart of `miot_cloud_action`, for a device whose state is
+            # cheaper to read from the cloud than from the device itself. Commands
+            # are a handful a day and want to be quick, and to work without
+            # internet, so they go to the device even when the reads do not.
+            cloud = None
         elif self.auto_cloud and not self._local_state:
             cloud = self.cloud
         elif self.use_cloud:

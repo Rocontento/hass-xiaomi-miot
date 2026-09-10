@@ -1,7 +1,9 @@
 """How often the d100e lock is woken up, and by whom.
 
-It runs on batteries: every property read is a radio round trip it pays for,
-so only the lock and the door are polled often.
+It runs on batteries, and every property read over the LAN is a radio round trip
+it pays for out of them. So its state is read from the cloud, which the lock
+reports to on its own terms and which costs it nothing to be asked, while
+commands still go straight to the lock.
 """
 import pytest
 
@@ -19,12 +21,12 @@ def model_device(make_device, load_miot_spec):
 
 
 async def coordinators(device):
-    lst = await device.init_miot_coordinators(device.custom_config_integer("interval_seconds"))
+    lst = await device.init_miot_coordinators(device.custom_config_integer("interval_seconds") or 60)
     # Names are prefixed with the device and the entry.
     return {coo.name.rsplit("-", 1)[-1]: coo for coo in lst}
 
 
-def props_of(coo, device=None):
+def props_of(coo):
     """The unique props a coordinator's mapping covers."""
     mapping = next(
         cell.cell_contents
@@ -34,34 +36,38 @@ def props_of(coo, device=None):
     return {MiotSpec.unique_prop(v) for v in mapping.values()}
 
 
-async def test_only_the_lock_and_the_door_are_polled_often(hass, make_device, load_miot_spec):
+def test_the_lock_is_never_polled_over_the_lan(make_device, load_miot_spec):
+    """The reason the batteries were going. Polling the lock directly cost it
+    about 40% of a set a week; asking the cloud costs it nothing."""
+    device = model_device(make_device, load_miot_spec)
+
+    assert not device.custom_config_bool("miot_local")
+    assert not device.custom_config_bool("miot_cloud_action")
+    assert device.custom_config_bool("miot_local_action") is True
+
+
+async def test_the_whole_spec_is_read_at_once_on_the_default_interval(
+    hass, make_device, load_miot_spec
+):
+    """Nothing is rationed any more, so nothing has to be split or slowed down."""
     device = model_device(make_device, load_miot_spec)
     coos = await coordinators(device)
 
-    fast = coos["chunk_1"]
-    assert fast.update_interval.total_seconds() == 60
-    assert props_of(fast) == {LOCK_STATE, DOOR_STATE}
+    assert list(coos) == ["miot_status"]
+    assert coos["miot_status"].update_interval.total_seconds() == 60
+    assert device.custom_config("interval_seconds") is None
+    assert not device.custom_config_list("chunk_coordinators")
+
+    props = props_of(coos["miot_status"])
+    assert {LOCK_STATE, DOOR_STATE, LOCK_MAH} <= props
 
 
-async def test_everything_else_is_polled_rarely(hass, make_device, load_miot_spec):
-    device = model_device(make_device, load_miot_spec)
-    coos = await coordinators(device)
-
-    rest = coos["miot_status"]
-    assert rest.update_interval.total_seconds() == 900
-    props = props_of(rest)
-    assert LOCK_MAH in props
-    # The fast properties are not read twice.
-    assert not props & {LOCK_STATE, DOOR_STATE}
-
-
-async def test_a_command_only_refreshes_the_fast_properties(hass, make_device, load_miot_spec):
+async def test_a_command_refreshes_the_state(hass, make_device, load_miot_spec):
     device = model_device(make_device, load_miot_spec)
     await coordinators(device)
 
-    # `update_main_status`, awaited after every lock command, must not pull the
-    # whole spec back over the radio.
-    assert [coo.name.rsplit("-", 1)[-1] for coo in device.main_coordinators] == ["chunk_1"]
+    # `update_main_status`, awaited after every lock command.
+    assert [coo.name.rsplit("-", 1)[-1] for coo in device.main_coordinators] == ["miot_status"]
 
 
 async def test_no_cloud_polling_is_inherited_from_the_generic_lock_config(
@@ -79,7 +85,6 @@ async def test_no_cloud_polling_is_inherited_from_the_generic_lock_config(
 
 @pytest.mark.parametrize("key", ["sensor_properties", "button_actions", "switch_properties"])
 async def test_the_entities_are_kept(hass, make_device, load_miot_spec, key):
-    """Polling less must not take entities away, only slow them down."""
     device = model_device(make_device, load_miot_spec)
 
     assert device.custom_config_list(key)
