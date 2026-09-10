@@ -1,0 +1,143 @@
+"""Reading the device when the cloud cannot be reached.
+
+The d100e's state is read from the cloud because that costs the lock nothing,
+which is worth having only while the cloud answers. With the internet down the
+lock is the only one left who knows its own state, so it gets woken after all.
+"""
+import pytest
+
+from custom_components.xiaomi_miot import lock  # noqa: F401
+from custom_components.xiaomi_miot.core.device import MiotDevice
+from custom_components.xiaomi_miot.core.miot_spec import MiotSpec
+
+try:
+    from miio import DeviceException
+except ImportError:  # pragma: no cover
+    from micloud.micloudexception import MiCloudException as DeviceException
+
+from micloud.micloudexception import MiCloudException
+
+MODEL = "xiaomi.lock.d100e"
+LOCK_STATE_PROP = "prop.19.12"
+
+
+class MiioStub:
+    def __init__(self, fail=False):
+        self.addr = ("192.168.1.6", 54321)
+        self.fail = fail
+        self.sent = []
+
+    async def send(self, method, params=None, **kwargs):
+        self.sent.append((method, params))
+        if self.fail:
+            return {}  # what a timeout looks like, raises `No response from the device`
+        return {
+            "id": 1,
+            "result": [{"did": p["did"], "siid": p["siid"], "piid": p["piid"], "code": 0, "value": 0}
+                       for p in params],
+        }
+
+
+class CloudStub:
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.reads = 0
+
+    async def async_get_properties_for_mapping(self, did, mapping):
+        self.reads += 1
+        if self.fail:
+            raise MiCloudException("Network is unreachable")
+        return [
+            {"did": did, "siid": v["siid"], "piid": v["piid"], "code": 0, "value": 0}
+            for v in mapping.values()
+        ]
+
+
+def d100e(hass, make_device, load_miot_spec, *, cloud_fails=False, lan_fails=False):
+    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    config = {"username": "tester", "conn_mode": "auto"}
+    device.entry.get_config = lambda key=None, default=None: config.get(key, default)
+    device.local = MiotDevice(hass, MiioStub(fail=lan_fails))
+    device.cloud = CloudStub(fail=cloud_fails)
+    return device
+
+
+def small_mapping(device):
+    return {"lock_state": {"siid": 19, "piid": 12}}
+
+
+def test_the_lock_asks_for_the_fallback(make_device, load_miot_spec):
+    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    assert device.custom_config_bool("auto_local") is True
+
+
+@pytest.mark.asyncio
+async def test_the_lan_is_left_alone_while_the_cloud_answers(hass, make_device, load_miot_spec):
+    """The whole point. A healthy cloud must never wake the lock."""
+    device = d100e(hass, make_device, load_miot_spec)
+
+    results = await device.update_miot_status(small_mapping(device))
+
+    assert results.updater == "cloud"
+    assert device.cloud.reads == 1
+    assert device.local.miio.sent == []
+    assert device.available is True
+
+
+@pytest.mark.asyncio
+async def test_the_lock_is_read_when_the_cloud_cannot_be(hass, make_device, load_miot_spec):
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True)
+
+    results = await device.update_miot_status(small_mapping(device))
+
+    assert results.updater == "local"
+    assert not results.is_empty
+    assert [m for m, _ in device.local.miio.sent] == ["get_properties"]
+    # The state is known, so the entities stay usable through the outage.
+    assert device.available is True
+
+
+@pytest.mark.asyncio
+async def test_the_cloud_is_tried_again_on_the_next_poll(hass, make_device, load_miot_spec):
+    """The fallback must not become the new normal once the internet is back."""
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True)
+    await device.update_miot_status(small_mapping(device))
+    assert device.local.miio.sent
+
+    device.cloud.fail = False
+    device.local.miio.sent.clear()
+    results = await device.update_miot_status(small_mapping(device))
+
+    assert results.updater == "cloud"
+    assert device.local.miio.sent == []
+    assert device._cloud_fails == 0
+
+
+@pytest.mark.asyncio
+async def test_both_being_down_is_reported_once(hass, make_device, load_miot_spec):
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True, lan_fails=True)
+
+    results = await device.update_miot_status(small_mapping(device))
+
+    assert results.is_empty
+    assert results.errors
+    # Tried the cloud, then the lock, and did not go round again.
+    assert device.cloud.reads == 1
+    assert len(device.local.miio.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_locally_read_device_does_not_gain_a_round_trip(
+    hass, make_device, load_miot_spec
+):
+    """`auto_local` is about cloud reads. A device already read over the lan
+    keeps the `auto_cloud` behaviour and is not sent back to the lan."""
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True, lan_fails=True)
+    device.customizes["miot_local"] = True
+    device.customizes["auto_cloud"] = True
+
+    await device.update_miot_status(small_mapping(device))
+
+    # One local attempt, one cloud attempt, and no second visit to the lock.
+    assert len(device.local.miio.sent) == 1
+    assert device.cloud.reads == 1

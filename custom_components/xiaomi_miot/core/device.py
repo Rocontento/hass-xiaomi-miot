@@ -804,6 +804,13 @@ class Device(CustomConfigHelper):
         return self.custom_config_bool('auto_cloud')
 
     @property
+    def auto_local(self):
+        """Whether to fall back to the device when the cloud cannot be reached."""
+        if not self.local or self.cloud_only:
+            return False
+        return self.custom_config_bool('auto_local')
+
+    @property
     def local_busy(self):
         """Whether a request is already on its way to the device over the lan."""
         return bool(self.local) and self.local.lan_busy
@@ -842,6 +849,7 @@ class Device(CustomConfigHelper):
         use_local=None,
         use_cloud=None,
         auto_cloud=None,
+        auto_local=None,
         check_lan=None,
         max_properties=None,
         chunk_services=None,
@@ -855,6 +863,8 @@ class Device(CustomConfigHelper):
             use_cloud = False if use_local else self.use_cloud
         if auto_cloud is None:
             auto_cloud = self.auto_cloud
+        if auto_local is None:
+            auto_local = self.auto_local
         if check_lan is None:
             check_lan = self.custom_config_bool('check_lan')
 
@@ -942,6 +952,22 @@ class Device(CustomConfigHelper):
                 self._cloud_fails += 1
                 self._cloud_state = self._cloud_fails <= 3
                 self.miot_results.errors = exc
+
+                if auto_local and use_local is False:
+                    # The state is read from the cloud because that is free for
+                    # the device, which is worth having only while the cloud is
+                    # answering. With the internet down the device itself is the
+                    # only one left who knows, so it is woken after all.
+                    self.log.warning('Cloud request failed, reading over the lan instead. %s', exc)
+                    return await self.update_miot_status(
+                        mapping,
+                        use_local=True,
+                        use_cloud=False,
+                        auto_cloud=False,
+                        auto_local=False,
+                        max_properties=max_properties,
+                        chunk_services=chunk_services,
+                    )
 
                 if not self._cloud_state:
                     self.available = False
