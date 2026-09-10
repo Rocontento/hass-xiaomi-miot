@@ -2423,8 +2423,12 @@ DEVICE_CUSTOMIZES = {
         # does, so they go straight to the lock over the LAN.
         'miot_local_action': True,
         # And when the internet is down the lock is the only one left who knows
-        # its own state, so it is read directly until the cloud comes back.
+        # its own state, so it is read directly until the cloud comes back --
+        # every five minutes rather than every minute, because an outage can
+        # last a lot longer than it takes to notice one and this is the poll
+        # that was emptying the batteries in the first place.
         'auto_local': True,
+        'auto_local_interval': 300,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',

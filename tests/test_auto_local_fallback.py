@@ -4,6 +4,8 @@ The d100e's state is read from the cloud because that costs the lock nothing,
 which is worth having only while the cloud answers. With the internet down the
 lock is the only one left who knows its own state, so it gets woken after all.
 """
+from datetime import timedelta
+
 import pytest
 
 from custom_components.xiaomi_miot import lock  # noqa: F401
@@ -53,8 +55,13 @@ class CloudStub:
         ]
 
 
-def d100e(hass, make_device, load_miot_spec, *, cloud_fails=False, lan_fails=False):
-    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+def d100e(hass, make_device, load_miot_spec, *, cloud_fails=False, lan_fails=False,
+          customizes=None):
+    # `Device.customizes` is recomputed on every read, so an override has to go
+    # in through the fixture rather than onto the dict it hands back.
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL, customizes=customizes
+    )
     config = {"username": "tester", "conn_mode": "auto"}
     device.entry.get_config = lambda key=None, default=None: config.get(key, default)
     device.local = MiotDevice(hass, MiioStub(fail=lan_fails))
@@ -132,12 +139,91 @@ async def test_a_locally_read_device_does_not_gain_a_round_trip(
 ):
     """`auto_local` is about cloud reads. A device already read over the lan
     keeps the `auto_cloud` behaviour and is not sent back to the lan."""
-    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True, lan_fails=True)
-    device.customizes["miot_local"] = True
-    device.customizes["auto_cloud"] = True
+    device = d100e(
+        hass, make_device, load_miot_spec, cloud_fails=True, lan_fails=True,
+        customizes={"miot_local": True, "auto_cloud": True, "auto_local": True},
+    )
+    assert device.use_local is True
 
     await device.update_miot_status(small_mapping(device))
 
     # One local attempt, one cloud attempt, and no second visit to the lock.
     assert len(device.local.miio.sent) == 1
     assert device.cloud.reads == 1
+
+
+def test_the_lock_is_left_five_minutes_between_fallback_reads(make_device, load_miot_spec):
+    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    assert device.custom_config_integer("auto_local_interval") == 300
+
+
+@pytest.mark.asyncio
+async def test_the_second_outage_poll_does_not_wake_the_lock_again(
+    hass, make_device, load_miot_spec
+):
+    """A minute after the first fallback read the state has not changed enough to
+    be worth the batteries, and the outage may have a long way to run."""
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True)
+    mapping = small_mapping(device)
+
+    first = await device.update_miot_status(mapping)
+    assert first.updater == "local"
+    assert len(device.local.miio.sent) == 1
+
+    second = await device.update_miot_status(mapping)
+
+    # Not read again, and the state it did read still stands.
+    assert len(device.local.miio.sent) == 1
+    assert second is first
+    assert device.available is True
+
+
+@pytest.mark.asyncio
+async def test_the_lock_is_read_again_once_the_interval_is_up(
+    hass, make_device, load_miot_spec
+):
+    device = d100e(hass, make_device, load_miot_spec, cloud_fails=True)
+    mapping = small_mapping(device)
+
+    await device.update_miot_status(mapping)
+    assert len(device.local.miio.sent) == 1
+
+    device._local_fallback_at -= timedelta(seconds=301)
+    results = await device.update_miot_status(mapping)
+
+    assert results.updater == "local"
+    assert len(device.local.miio.sent) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_outage_is_answered_at_once(hass, make_device, load_miot_spec):
+    """The waiting is between reads, not before the first one."""
+    device = d100e(hass, make_device, load_miot_spec)
+    mapping = small_mapping(device)
+
+    await device.update_miot_status(mapping)
+    assert device.local.miio.sent == []
+
+    device.cloud.fail = True
+    results = await device.update_miot_status(mapping)
+
+    assert results.updater == "local"
+    assert len(device.local.miio.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_without_an_interval_every_failed_poll_falls_through(
+    hass, make_device, load_miot_spec
+):
+    """What a mains powered device wants: no rationing, the poll costs it nothing."""
+    device = d100e(
+        hass, make_device, load_miot_spec, cloud_fails=True,
+        customizes={"auto_local": True},
+    )
+    assert device.custom_config("auto_local_interval") is None
+    mapping = small_mapping(device)
+
+    await device.update_miot_status(mapping)
+    await device.update_miot_status(mapping)
+
+    assert len(device.local.miio.sent) == 2
