@@ -2422,6 +2422,9 @@ DEVICE_CUSTOMIZES = {
         # to be immediate, and they should not stop working when the internet
         # does, so they go straight to the lock over the LAN.
         'miot_local_action': True,
+        # And when the internet is down the lock is the only one left who knows
+        # its own state, so it is read directly until the cloud comes back.
+        'auto_local': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',
