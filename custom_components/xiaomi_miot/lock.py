@@ -264,21 +264,33 @@ class LockEntity(XEntity, BaseEntity):
         a fraction of a second apart. So the first call of a command picks the
         transport and the rest of the command is pinned to it.
 
-        The exception is a transport failure, which means the lock never heard
-        the command: nothing it already did can be repeated, so that one is
-        retried over the cloud and the command carries on from there.
+        The exception is a transport failure on the first call, which means the
+        lock never heard it: nothing it already did can be repeated, so the other
+        transport is tried and the whole command carries on from there. Whichever
+        one answered is then the one the command is spent on.
         """
         result = await self.async_call_action(action, params, **self.transport_kwargs())
-        if self.transport_failed(result) and self._transport != 'cloud' and self.device.cloud:
+        if self._transport is not None:
+            return result
+        if self.transport_failed(result) and (other := self.other_transport(result)):
             self.log.info(
-                '%s: %s did not get through over the LAN (%s), trying the cloud',
-                self.entity_id, action.full_name, result.error,
+                '%s: %s did not get through over the %s (%s), trying the %s',
+                self.entity_id, action.full_name, result.updater, result.error, other,
             )
-            self._transport = 'cloud'
-            result = await self.async_call_action(action, params, cloud=True)
-        elif self._transport is None:
+            self._transport = other
+            result = await self.async_call_action(action, params, **self.transport_kwargs())
+        else:
             self._transport = result.updater if result else None
         return result
+
+    def other_transport(self, result):
+        """The way to the lock that this command has not tried yet."""
+        tried = result.updater if result else None
+        if tried != 'cloud' and self.device.cloud:
+            return 'cloud'
+        if tried != 'local' and self.device.local:
+            return 'local'
+        return None
 
     def transport_kwargs(self):
         """Pin the call to the transport the command started on, if any."""

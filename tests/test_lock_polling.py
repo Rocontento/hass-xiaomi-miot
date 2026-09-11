@@ -36,14 +36,15 @@ def props_of(coo):
     return {MiotSpec.unique_prop(v) for v in mapping.values()}
 
 
-def test_the_lock_is_never_polled_over_the_lan(make_device, load_miot_spec):
-    """The reason the batteries were going. Polling the lock directly cost it
-    about 40% of a set a week; asking the cloud costs it nothing."""
+def test_nothing_reaches_the_lock_over_the_lan(make_device, load_miot_spec):
+    """Its wifi sleeps between conversations. Waking it is slow and expensive,
+    and the connection it holds open to the cloud is neither."""
     device = model_device(make_device, load_miot_spec)
 
     assert not device.custom_config_bool("miot_local")
-    assert not device.custom_config_bool("miot_cloud_action")
-    assert device.custom_config_bool("miot_local_action") is True
+    assert not device.custom_config_bool("miot_local_action")
+    assert not device.custom_config_bool("auto_local")
+    assert device.custom_config_bool("miot_cloud_action") is True
 
 
 async def test_the_whole_spec_is_read_at_once_on_the_default_interval(
