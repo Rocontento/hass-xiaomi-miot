@@ -572,21 +572,19 @@ def test_a_broken_momentary_delay_falls_back_to_the_default(make_device, load_mi
     assert momentary_entity(device).momentary_seconds == 5
 
 
-def test_the_state_comes_from_the_cloud_and_the_commands_from_the_lan(
-    make_device, load_miot_spec
-):
-    """Reads are what the batteries pay for, commands are a handful a day."""
+def test_nothing_reaches_the_lock_over_the_lan(make_device, load_miot_spec):
+    """Both the state and the commands go through the connection the lock keeps
+    open to the cloud, which is the quick way in and the one already paid for."""
     device = model_device(make_device, load_miot_spec)
 
     assert not device.custom_config_bool("miot_local")
-    assert not device.custom_config_bool("miot_cloud_action")
-    assert device.custom_config_bool("miot_local_action") is True
+    assert not device.custom_config_bool("miot_local_action")
+    assert not device.custom_config_bool("auto_local")
+    assert device.custom_config_bool("miot_cloud_action") is True
 
 
 @pytest.mark.asyncio
-async def test_a_command_goes_to_the_lock_while_the_state_comes_from_the_cloud(
-    hass, make_device, load_miot_spec
-):
+async def test_a_command_goes_through_the_cloud(hass, make_device, load_miot_spec):
     device = model_device(make_device, load_miot_spec)
     config = {"username": "tester", "conn_mode": "auto"}
     device.entry.get_config = lambda key=None, default=None: config.get(key, default)
@@ -598,35 +596,64 @@ async def test_a_command_goes_to_the_lock_while_the_state_comes_from_the_cloud(
 
         async def send(self, method, params=None, **kwargs):
             sent.append((method, params))
-            return {"id": 1, "result": {"code": 0, "out": [{"piid": 3, "value": 1}]}}
+            return {"id": 1, "result": {"code": 0}}
 
     class CloudStub:
-        actions = []
+        def __init__(self):
+            self.actions = []
 
         async def async_do_action(self, pms):
             self.actions.append(pms)
-            return {"code": 0}
+            return {"code": 0, "out": [1, "ok"]}
 
     device.local = MiotDevice(hass, MiioStub())
     device.cloud = CloudStub()
 
-    # Nothing has been read over the LAN, so `_local_state` is still unset.
-    assert device._local_state is None
-    assert device.use_cloud is True
-
     result = await device.async_call_action(LOCK_UNLOCK_SIID, REMOTE_UNLOCK_AIID, ["s3cret"])
 
-    assert result.updater == "local"
-    assert device.cloud.actions == []
-    assert sent == [(
-        "action",
-        {
-            "did": "test-device",
-            "siid": LOCK_UNLOCK_SIID,
-            "aiid": REMOTE_UNLOCK_AIID,
-            "in": [{"piid": 2, "value": "s3cret"}],
-        },
-    )]
+    assert result.updater == "cloud"
+    assert sent == []
+    assert device.cloud.actions == [{
+        "did": "test-device",
+        "siid": LOCK_UNLOCK_SIID,
+        "aiid": REMOTE_UNLOCK_AIID,
+        "in": ["s3cret"],
+    }]
+
+
+@pytest.mark.asyncio
+async def test_a_command_the_cloud_cannot_carry_falls_back_to_the_lan(
+    make_device, load_miot_spec
+):
+    """With the internet down the wake-up is worth paying for: it is the only way
+    left to the lock, and it is once, not every time."""
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        over = "local" if kwargs.get("local") else "cloud"
+        calls.append((aiid, over))
+        if over == "cloud":
+            return MiotResult({}, code=-1, error="Network is unreachable", updater="cloud")
+        out = ["s3cret", 1, "ok"] if aiid == GET_LOCKMSG_AIID else [1, "ok"]
+        return MiotResult({"code": 0, "out": out}, updater="local")
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_open() is True
+
+    # The cloud is tried once, and the rest of the command follows the LAN.
+    assert calls == [
+        (GET_LOCKMSG_AIID, "cloud"),
+        (GET_LOCKMSG_AIID, "local"),
+        (REMOTE_UNLOCK_AIID, "local"),
+    ]
+    assert entity.extra_state_attributes["last_transport"] == "local"
 
 
 @pytest.mark.asyncio

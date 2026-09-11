@@ -2422,23 +2422,24 @@ DEVICE_CUSTOMIZES = {
     # Xiaomi Self-Install Smart Lock, unlocking retracts the tongue for `lock_tongue_time`
     # seconds, so the unlock action is also what Home Assistant calls "open" (unlatch).
     'xiaomi.lock.d100e': {
-        # This lock runs on batteries, and every property read over the LAN is a
-        # radio round trip it pays for out of them: polling it directly cost it
-        # around 40% of a set of batteries a week. Its state is read from the
-        # cloud instead, which the lock reports to on its own terms and which
-        # costs it nothing to be asked.
+        # Nothing here talks to the lock over the LAN, and that is deliberate.
         #
-        # Commands are the other way round. There are a handful a day, they want
-        # to be immediate, and they should not stop working when the internet
-        # does, so they go straight to the lock over the LAN.
-        'miot_local_action': True,
-        # And when the internet is down the lock is the only one left who knows
-        # its own state, so it is read directly until the cloud comes back --
-        # every five minutes rather than every minute, because an outage can
-        # last a lot longer than it takes to notice one and this is the poll
-        # that was emptying the batteries in the first place.
-        'auto_local': True,
-        'auto_local_interval': 300,
+        # It runs on batteries, so between one conversation and the next its wifi
+        # goes to sleep. Reaching it over the LAN means waking that radio first,
+        # which costs a full power transmit and takes long enough that the first
+        # attempt usually times out: a command took over five seconds to land.
+        # Keeping the radio awake to avoid that is the same thing as draining it.
+        #
+        # Meanwhile the lock holds one connection to xiaomi's servers open all
+        # the time, because it has to for the app to reach it from outside the
+        # house. That connection is already paid for. Everything sent through it
+        # arrives at once and costs the batteries nothing more, which makes the
+        # cloud both the quicker way in and the cheaper one.
+        #
+        # `LockEntity.async_lock_action` still falls back to the LAN if a command
+        # cannot get through, so a command survives the internet being down. It
+        # just costs the wake-up when that happens, rather than every time.
+        'miot_cloud_action': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
         'open_action': 'remote_unlock_e',

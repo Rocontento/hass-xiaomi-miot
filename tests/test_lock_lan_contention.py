@@ -157,7 +157,9 @@ async def test_a_command_goes_to_the_cloud_while_the_lan_is_busy(
 async def test_a_busy_lan_does_not_divert_a_local_only_device(
     hass, make_device, load_miot_spec
 ):
-    device = make_device(load_miot_spec("xiaomi.lock.d100e.json"), model=MODEL)
+    device = make_device(
+        load_miot_spec("xiaomi.lock.d100e.json"), model=LAN_MODEL, customizes=LAN_CUSTOMIZES
+    )
     set_conn_mode(device, "local")
     device.local = miot_device(hass)
     device.cloud = CloudStub()
