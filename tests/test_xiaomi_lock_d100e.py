@@ -250,9 +250,10 @@ async def test_the_secret_is_never_published_as_an_attribute(make_device, load_m
 
 
 @pytest.mark.asyncio
-async def test_a_refused_secret_read_still_runs_the_command(make_device, load_miot_spec):
-    """The lock answers `res` 0 (Fail): there is no secret to send, but the
-    command is still attempted the way it was before secrets were read."""
+async def test_a_refused_secret_read_sends_no_command(make_device, load_miot_spec):
+    """The lock answers `res` 0 (Fail): there is no secret to send. Sent empty,
+    the lock answers Fail and the door never moves, so the command is not sent
+    at all and the read's own answer explains why."""
     device = model_device(make_device, load_miot_spec)
     entity = lock_entity(device)
     device.async_call_action, calls = call_action_stub(
@@ -264,7 +265,7 @@ async def test_a_refused_secret_read_still_runs_the_command(make_device, load_mi
     with patch.object(LockEntity, "_async_write_ha_state"):
         assert await entity.async_unlock() is False
 
-    assert calls[-1] == (LOCK_UNLOCK_SIID, REMOTE_UNLOCK_AIID, [""])
+    assert [aiid for _, aiid, _ in calls] == [GET_LOCKMSG_AIID]
     assert entity._attr_extra_state_attributes["unlock_result"] == {
         "res": "Fail",
         "msg": "err",
@@ -297,8 +298,9 @@ async def test_lock_refusal_is_detected_even_when_the_miot_call_succeeds(
     entity = lock_entity(device)
     entity.set_state({entity._conv_state.full_name: 0})
     # `remote-unlock-e` answers with `res` (0 Fail) and `msg`.
-    device.async_call_action = AsyncMock(
-        return_value=MiotResult({"code": 0, "out": [0, "secret invalid"]}),
+    device.async_call_action, _ = call_action_stub(
+        {"code": 0, "out": ["s3cret", 1, "ok"]},
+        action_out={"code": 0, "out": [0, "secret invalid"]},
     )
     device.update_main_status = AsyncMock()
 
@@ -318,9 +320,7 @@ async def test_lock_refusal_is_detected_even_when_the_miot_call_succeeds(
 async def test_lock_acceptance_is_decoded_into_the_attributes(make_device, load_miot_spec):
     device = model_device(make_device, load_miot_spec)
     entity = lock_entity(device)
-    device.async_call_action = AsyncMock(
-        return_value=MiotResult({"code": 0, "out": [1, "ok"]}),
-    )
+    device.async_call_action, _ = call_action_stub({"code": 0, "out": ["s3cret", 1, "ok"]})
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):

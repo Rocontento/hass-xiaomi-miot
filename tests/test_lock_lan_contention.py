@@ -333,3 +333,91 @@ async def test_a_pinned_call_waits_for_the_lan_rather_than_leaving_it(
 
     assert device.cloud.actions == []
     assert result.updater == "local"
+
+
+def cloud_refuses_secret_stub(calls, cloud_code, local_ok):
+    """The cloud cannot reach the lock: it answers the secret read with the lock's
+    own error code. The LAN answers or not depending on `local_ok`."""
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        via = "local" if kwargs.get("local") else "cloud"
+        calls.append((aiid, via))
+        if via == "cloud" and aiid == GET_LOCKMSG_AIID:
+            result = MiotResult({"code": cloud_code})
+        elif via == "local" and not local_ok:
+            result = MiotResult({}, code=-1, error="No response from the device")
+        elif aiid == GET_LOCKMSG_AIID:
+            result = MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
+        else:
+            result = MiotResult({"code": 0, "out": [1, "ok"]})
+        result.updater = via
+        return result
+
+    return call_action
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cloud_code", [-704083036, -704002000])
+async def test_a_secret_the_cloud_cannot_get_is_read_over_the_lan(
+    make_device, load_miot_spec, cloud_code
+):
+    """The cloud reports a lock it cannot reach as the lock's error, not as a
+    transport failure. The secret read is harmless to repeat, so the LAN gets it."""
+    device, entity = d100e_lock(make_device, load_miot_spec)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = cloud_refuses_secret_stub(calls, cloud_code, local_ok=True)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert calls == [(GET_LOCKMSG_AIID, "cloud"), (GET_LOCKMSG_AIID, "local"), (1, "local")]
+    assert entity.extra_state_attributes["last_transport"] == "local"
+
+
+@pytest.mark.asyncio
+async def test_no_command_is_sent_without_its_secret(make_device, load_miot_spec):
+    """Without the secret the lock refuses the command. Sending it anyway cost a
+    second timeout, long enough for the automation to turn the next tap away."""
+    device, entity = d100e_lock(make_device, load_miot_spec)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = cloud_refuses_secret_stub(calls, -704083036, local_ok=False)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is False
+
+    assert calls == [(GET_LOCKMSG_AIID, "cloud"), (GET_LOCKMSG_AIID, "local")]
+    assert not entity.is_unlocking
+    device.update_main_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_refused_command_is_never_repeated_over_the_lan(make_device, load_miot_spec):
+    """Only the secret read is retried on a lock error. The command itself may have
+    been carried out, and repeating an unlatch could open the door twice."""
+    device, entity = d100e_lock(make_device, load_miot_spec)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        calls.append((aiid, bool(kwargs.get("local"))))
+        if aiid == GET_LOCKMSG_AIID:
+            result = MiotResult({"code": 0, "out": ["s3cret", 1, "ok"]})
+        else:
+            result = MiotResult({"code": -704083036})
+        result.updater = "cloud"
+        return result
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is False
+
+    assert calls == [(GET_LOCKMSG_AIID, False), (1, False)]

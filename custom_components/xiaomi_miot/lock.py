@@ -77,6 +77,7 @@ class LockEntity(XEntity, BaseEntity):
     _unlocked_values = None
     _jammed_values = None
     _transport = None
+    _secret_failure = None
 
     def on_init(self):
         self._attr_available = self.device.available
@@ -185,6 +186,16 @@ class LockEntity(XEntity, BaseEntity):
         code = kwargs.get('code')
         if code is None and self.needs_secret(action, key):
             code = await self.async_read_secret()
+            if code is None:
+                # Without the secret the lock refuses the command, so sending it
+                # anyway only costs another round trip -- a whole timeout when the
+                # lock is not answering, during which the next tap is turned away.
+                self._attr_is_locking = False
+                self._attr_is_unlocking = False
+                self._attr_extra_state_attributes[f'{key}_result'] = self._secret_failure
+                self._attr_extra_state_attributes['last_transport'] = self._transport
+                self._async_write_ha_state()
+                return False
         params = self.action_params(action, key, code)
         result = await self.async_lock_action(action, params)
         outs, rejected = self.action_result(action, result)
@@ -242,6 +253,11 @@ class LockEntity(XEntity, BaseEntity):
                 '%s: Reading the lock secret with %s failed: %s',
                 self.entity_id, self._act_secret.full_name, outs or result,
             )
+            # Kept for the command's result attribute, minus anything that could
+            # be the secret itself.
+            self._secret_failure = (
+                {k: v for k, v in outs.items() if k not in SECRET_PROPERTIES} if outs else str(result)
+            )
             return None
         for name in SECRET_PROPERTIES:
             value = outs.get(name)
@@ -268,14 +284,24 @@ class LockEntity(XEntity, BaseEntity):
         lock never heard it: nothing it already did can be repeated, so the other
         transport is tried and the whole command carries on from there. Whichever
         one answered is then the one the command is spent on.
+
+        Reading the secret is retried on any failure, not only a transport one.
+        It changes nothing on the lock, so asking twice is harmless, and the cloud
+        reports a lock it cannot reach as the lock's own error (-704083036, an
+        operation timeout, then -704002000 for a while after), which would
+        otherwise leave the LAN untried while the door stays shut.
         """
         result = await self.async_call_action(action, params, **self.transport_kwargs())
         if self._transport is not None:
             return result
-        if self.transport_failed(result) and (other := self.other_transport(result)):
+        failed = self.transport_failed(result) or (
+            action == self._act_secret and not (result and result.is_success)
+        )
+        if failed and (other := self.other_transport(result)):
             self.log.info(
                 '%s: %s did not get through over the %s (%s), trying the %s',
-                self.entity_id, action.full_name, result.updater, result.error, other,
+                self.entity_id, action.full_name, result.updater if result else None,
+                (result.error or result.spec_error) if result else None, other,
             )
             self._transport = other
             result = await self.async_call_action(action, params, **self.transport_kwargs())
