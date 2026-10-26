@@ -48,6 +48,7 @@ if TYPE_CHECKING:
 
 LOCK_COMMAND_DURATION = 'lock_command_duration'
 LOCK_COMMAND_TRANSPORT = 'lock_command_transport'
+LOCK_LOCAL_FIRST = 'lock_local_first'
 
 InfoConverter = InfoConv().with_option(
     icon='mdi:information',
@@ -527,6 +528,15 @@ class Device(CustomConfigHelper):
         for d in ['sensor', 'binary_sensor']:
             for attr in self.custom_config_list(f'{d}_attributes') or []:
                 self.add_converter(AttrConv(attr, d))
+
+        if self.custom_config_list('local_first_commands'):
+            # Which way an opening is tried first, switchable from the device page.
+            self.add_converter(BaseConv(LOCK_LOCAL_FIRST, 'switch').with_option(
+                name='Open over LAN first',
+                icon='mdi:lan',
+                entity_type=LOCK_LOCAL_FIRST,
+                entity_category=EntityCategory.CONFIG,
+            ))
 
         if self.custom_config_bool('lock_command_sensors'):
             # How long the last lock command took and which way it went, filled in

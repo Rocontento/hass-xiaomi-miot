@@ -17,6 +17,7 @@ from . import (
     ToggleSubEntity,
     async_setup_config_entry,
 )
+from .core.device import LOCK_LOCAL_FIRST
 from .core.miot_spec import MiotService
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,7 +52,31 @@ class SwitchEntity(XEntity, BaseEntity, RestoreEntity):
         await self.device.async_write({self.attr: False})
 
 
+class LockLocalFirstSwitch(SwitchEntity):
+    """Whether a lock tries its `local_first_commands` over the LAN or the cloud
+    first. Nothing is sent to the device, the lock entities read it from the
+    device props, and it is restored across restarts."""
+
+    def on_init(self):
+        self._attr_available = True
+        self._attr_is_on = True
+        self.device.props[self.conv.attr] = True
+
+    def set_state(self, data: dict):
+        super().set_state(data)
+        self.device.props[self.conv.attr] = self._attr_is_on
+
+    async def async_turn_on(self):
+        self.set_state({self.attr: True})
+        self._async_write_ha_state()
+
+    async def async_turn_off(self):
+        self.set_state({self.attr: False})
+        self._async_write_ha_state()
+
+
 XEntity.CLS[ENTITY_DOMAIN] = SwitchEntity
+XEntity.CLS[LOCK_LOCAL_FIRST] = LockLocalFirstSwitch
 
 
 class MiotSwitchEntity(MiotToggleEntity, BaseEntity):

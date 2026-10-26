@@ -18,7 +18,7 @@ from . import (
     async_setup_config_entry,
     bind_services_to_entries,
 )
-from .core.device import LOCK_COMMAND_DURATION, LOCK_COMMAND_TRANSPORT
+from .core.device import LOCK_COMMAND_DURATION, LOCK_COMMAND_TRANSPORT, LOCK_LOCAL_FIRST
 from .core.miot_spec import MiotAction, MiotProperty
 from .core.templates import template
 
@@ -183,7 +183,13 @@ class LockEntity(XEntity, BaseEntity):
         self._transport = None
         # Where the command is tried first. It still moves to the other transport
         # if it cannot get through, this only decides which one gets the first go.
-        self._preferred = 'local' if key in self.local_first_commands() and self.device.local else None
+        self._preferred = (
+            'local'
+            if key in self.local_first_commands() and self.device.local
+            # Turned off from the device page, the routing decides as for any command.
+            and self.device.props.get(LOCK_LOCAL_FIRST) is not False
+            else None
+        )
         started = time.monotonic()
         # A command can take a moment to reach the lock, show the transition.
         self._attr_is_locking = key == 'lock'

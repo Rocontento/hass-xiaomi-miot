@@ -926,3 +926,50 @@ async def test_a_command_without_its_secret_still_fills_in_the_sensors(
         assert await entity.async_unlock() is False
 
     assert via.native_value == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_the_lan_first_switch_sends_openings_over_the_cloud_when_off(
+    make_device, load_miot_spec
+):
+    from homeassistant.const import EntityCategory
+    from custom_components.xiaomi_miot.switch import LockLocalFirstSwitch
+
+    device = model_device(make_device, load_miot_spec)
+    conv = device.find_converter("switch.lock_local_first")
+    assert conv.option["entity_type"] == "lock_local_first"
+    switch = LockLocalFirstSwitch(device, conv)
+    assert switch.is_on is True
+    assert switch.entity_category == EntityCategory.CONFIG
+
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = transport_calls_stub(calls)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockLocalFirstSwitch, "_async_write_ha_state"):
+        await switch.async_turn_off()
+    assert switch.is_on is False
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+    # Left to the routing, which sends the d100e commands over the cloud.
+    assert calls == [(GET_LOCKMSG_AIID, None), (REMOTE_UNLOCK_AIID, "cloud")]
+
+    calls.clear()
+    with patch.object(LockLocalFirstSwitch, "_async_write_ha_state"):
+        await switch.async_turn_on()
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+    assert calls == [(GET_LOCKMSG_AIID, "local"), (REMOTE_UNLOCK_AIID, "local")]
+
+
+def test_the_lan_first_switch_is_restored(make_device, load_miot_spec):
+    from custom_components.xiaomi_miot.switch import LockLocalFirstSwitch
+
+    device = model_device(make_device, load_miot_spec)
+    switch = LockLocalFirstSwitch(device, device.find_converter("switch.lock_local_first"))
+    switch.set_state({"switch.lock_local_first": False})
+
+    assert device.props["lock_local_first"] is False
