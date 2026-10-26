@@ -2422,23 +2422,17 @@ DEVICE_CUSTOMIZES = {
     # Xiaomi Self-Install Smart Lock, unlocking retracts the tongue for `lock_tongue_time`
     # seconds, so the unlock action is also what Home Assistant calls "open" (unlatch).
     'xiaomi.lock.d100e': {
-        # Nothing here talks to the lock over the LAN, and that is deliberate.
+        # The state is read from the cloud. Xiaomi keeps the last values the lock
+        # reported, so a read is answered from there and never wakes the lock.
         #
-        # It runs on batteries, so between one conversation and the next its wifi
-        # goes to sleep. Reaching it over the LAN means waking that radio first,
-        # which costs a full power transmit and takes long enough that the first
-        # attempt usually times out: a command took over five seconds to land.
-        # Keeping the radio awake to avoid that is the same thing as draining it.
-        #
-        # Meanwhile the lock holds one connection to xiaomi's servers open all
-        # the time, because it has to for the app to reach it from outside the
-        # house. That connection is already paid for. Everything sent through it
-        # arrives at once and costs the batteries nothing more, which makes the
-        # cloud both the quicker way in and the cheaper one.
-        #
-        # `LockEntity.async_lock_action` still falls back to the LAN if a command
-        # cannot get through, so a command survives the internet being down. It
-        # just costs the wake-up when that happens, rather than every time.
+        # A command is different: over either transport it has to reach the lock
+        # itself, through the same power saving wifi radio. The cloud only adds
+        # a hop to xiaomi's servers and back. So opening goes over the LAN first,
+        # where it took 0.7s the one time the logs caught it, and locking stays on
+        # the cloud. `LockEntity.async_lock_action` moves a command to the other
+        # transport when it cannot get through, in both directions, and the lock
+        # publishes `last_transport` and `last_duration` for each one.
+        'local_first_commands': 'unlock,open',
         'miot_cloud_action': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',

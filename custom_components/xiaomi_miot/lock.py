@@ -1,5 +1,6 @@
 """Support lock entity for Xiaomi Miot."""
 import logging
+import time
 
 from homeassistant.components.lock import (
     DOMAIN as ENTITY_DOMAIN,
@@ -77,6 +78,7 @@ class LockEntity(XEntity, BaseEntity):
     _unlocked_values = None
     _jammed_values = None
     _transport = None
+    _preferred = None
     _secret_failure = None
 
     def on_init(self):
@@ -178,6 +180,10 @@ class LockEntity(XEntity, BaseEntity):
         # Each command is a sequence of calls sharing one short lived secret, so
         # the transport is chosen once and the rest of the sequence follows it.
         self._transport = None
+        # Where the command is tried first. It still moves to the other transport
+        # if it cannot get through, this only decides which one gets the first go.
+        self._preferred = 'local' if key in self.local_first_commands() and self.device.local else None
+        started = time.monotonic()
         # A command can take a moment to reach the lock, show the transition.
         self._attr_is_locking = key == 'lock'
         self._attr_is_unlocking = key != 'lock'
@@ -194,6 +200,7 @@ class LockEntity(XEntity, BaseEntity):
                 self._attr_is_unlocking = False
                 self._attr_extra_state_attributes[f'{key}_result'] = self._secret_failure
                 self._attr_extra_state_attributes['last_transport'] = self._transport
+                self._attr_extra_state_attributes['last_duration'] = round(time.monotonic() - started, 2)
                 self._async_write_ha_state()
                 return False
         params = self.action_params(action, key, code)
@@ -207,6 +214,9 @@ class LockEntity(XEntity, BaseEntity):
         # them show, so a command failing on one transport and working on the other
         # is otherwise only visible by turning on debug logging.
         self._attr_extra_state_attributes['last_transport'] = result.updater if result else None
+        # How long the tap took to land, so one transport can be weighed against
+        # the other from the attributes rather than from a debug log.
+        self._attr_extra_state_attributes['last_duration'] = round(time.monotonic() - started, 2)
         if success and action.out and not outs:
             # The action is declared to answer with a result and did not. The call
             # was accepted, but nothing says the lock acted on it, so do not let
@@ -228,6 +238,10 @@ class LockEntity(XEntity, BaseEntity):
         if success:
             await self.device.update_main_status()
         return success
+
+    def local_first_commands(self):
+        """The commands tried over the LAN before the cloud, eg. `unlock,open`."""
+        return self.custom_config_list('local_first_commands') or []
 
     def needs_secret(self, action: MiotAction, key):
         """Whether the lock expects a secret of its own as the action input."""
@@ -291,9 +305,9 @@ class LockEntity(XEntity, BaseEntity):
         operation timeout, then -704002000 for a while after), which would
         otherwise leave the LAN untried while the door stays shut.
         """
-        result = await self.async_call_action(action, params, **self.transport_kwargs())
         if self._transport is not None:
-            return result
+            return await self.async_call_action(action, params, **self.transport_kwargs())
+        result = await self.async_call_action(action, params, **self.transport_kwargs(self._preferred))
         failed = self.transport_failed(result) or (
             action == self._act_secret and not (result and result.is_success)
         )
@@ -318,11 +332,12 @@ class LockEntity(XEntity, BaseEntity):
             return 'local'
         return None
 
-    def transport_kwargs(self):
+    def transport_kwargs(self, transport=None):
         """Pin the call to the transport the command started on, if any."""
-        if self._transport == 'cloud':
+        transport = transport or self._transport
+        if transport == 'cloud':
             return {'cloud': True}
-        if self._transport == 'local':
+        if transport == 'local':
             return {'local': True}
         return {}
 

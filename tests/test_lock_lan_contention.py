@@ -371,9 +371,9 @@ async def test_a_secret_the_cloud_cannot_get_is_read_over_the_lan(
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        assert await entity.async_unlock() is True
+        assert await entity.async_lock() is True
 
-    assert calls == [(GET_LOCKMSG_AIID, "cloud"), (GET_LOCKMSG_AIID, "local"), (1, "local")]
+    assert calls == [(GET_LOCKMSG_AIID, "cloud"), (GET_LOCKMSG_AIID, "local"), (3, "local")]
     assert entity.extra_state_attributes["last_transport"] == "local"
 
 
@@ -389,10 +389,10 @@ async def test_no_command_is_sent_without_its_secret(make_device, load_miot_spec
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        assert await entity.async_unlock() is False
+        assert await entity.async_lock() is False
 
     assert calls == [(GET_LOCKMSG_AIID, "cloud"), (GET_LOCKMSG_AIID, "local")]
-    assert not entity.is_unlocking
+    assert not entity.is_locking
     device.update_main_status.assert_not_called()
 
 
@@ -418,6 +418,6 @@ async def test_a_refused_command_is_never_repeated_over_the_lan(make_device, loa
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        assert await entity.async_unlock() is False
+        assert await entity.async_lock() is False
 
-    assert calls == [(GET_LOCKMSG_AIID, False), (1, False)]
+    assert calls == [(GET_LOCKMSG_AIID, False), (3, False)]
