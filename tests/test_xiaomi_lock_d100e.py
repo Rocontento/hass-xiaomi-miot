@@ -645,13 +645,13 @@ async def test_a_command_the_cloud_cannot_carry_falls_back_to_the_lan(
     device.update_main_status = AsyncMock()
 
     with patch.object(LockEntity, "_async_write_ha_state"):
-        assert await entity.async_open() is True
+        assert await entity.async_lock() is True
 
     # The cloud is tried once, and the rest of the command follows the LAN.
     assert calls == [
         (GET_LOCKMSG_AIID, "cloud"),
         (GET_LOCKMSG_AIID, "local"),
-        (REMOTE_UNLOCK_AIID, "local"),
+        (REMOTE_LOCK_AIID, "local"),
     ]
     assert entity.extra_state_attributes["last_transport"] == "local"
 
@@ -722,3 +722,97 @@ async def test_a_refusal_is_not_retried_over_the_cloud(make_device, load_miot_sp
 )
 def test_transport_failure_is_told_apart_from_a_refusal(result, failed):
     assert LockEntity.transport_failed(result) is failed
+
+
+def transport_calls_stub(calls, local_ok=True):
+    """Answers over whichever transport the call is pinned to, the LAN only when
+    `local_ok`, and records the route of each call."""
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        over = "local" if kwargs.get("local") else "cloud" if kwargs.get("cloud") else None
+        calls.append((aiid, over))
+        if over == "local" and not local_ok:
+            return MiotResult({}, code=-1, error="Unable to discover the device", updater="local")
+        out = ["s3cret", 1, "ok"] if aiid == GET_LOCKMSG_AIID else [1, "ok"]
+        return MiotResult({"code": 0, "out": out}, updater=over or "cloud")
+
+    return call_action
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["async_unlock", "async_open"])
+async def test_opening_goes_over_the_lan_first(make_device, load_miot_spec, command):
+    """A command reaches the lock through the same wifi radio either way, the
+    cloud only adds a round trip to xiaomi's servers."""
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = transport_calls_stub(calls)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await getattr(entity, command)() is True
+
+    assert calls == [(GET_LOCKMSG_AIID, "local"), (REMOTE_UNLOCK_AIID, "local")]
+    assert entity.extra_state_attributes["last_transport"] == "local"
+    assert entity.extra_state_attributes["last_duration"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_opening_falls_back_to_the_cloud_when_the_lan_does_not_answer(
+    make_device, load_miot_spec
+):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = transport_calls_stub(calls, local_ok=False)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert calls == [
+        (GET_LOCKMSG_AIID, "local"),
+        (GET_LOCKMSG_AIID, "cloud"),
+        (REMOTE_UNLOCK_AIID, "cloud"),
+    ]
+    assert entity.extra_state_attributes["last_transport"] == "cloud"
+
+
+@pytest.mark.asyncio
+async def test_locking_is_left_to_the_routing(make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    calls = []
+    device.async_call_action = transport_calls_stub(calls)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_lock() is True
+
+    # Unpinned, so `miot_cloud_action` sends it over the cloud.
+    assert calls == [(GET_LOCKMSG_AIID, None), (REMOTE_LOCK_AIID, "cloud")]
+
+
+@pytest.mark.asyncio
+async def test_without_a_lan_connection_opening_goes_over_the_cloud(
+    make_device, load_miot_spec
+):
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = None
+    calls = []
+    device.async_call_action = transport_calls_stub(calls)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert calls == [(GET_LOCKMSG_AIID, None), (REMOTE_UNLOCK_AIID, "cloud")]
