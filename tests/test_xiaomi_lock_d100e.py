@@ -862,3 +862,67 @@ async def test_the_tries_reach_the_miio_session(hass, make_device, load_miot_spe
     await device.async_call_action(LOCK_UNLOCK_SIID, GET_LOCKMSG_AIID, [], local=True)
 
     assert sent == [2, None]
+
+
+def test_the_command_sensors_are_diagnostic(make_device, load_miot_spec):
+    from homeassistant.const import EntityCategory
+    from custom_components.xiaomi_miot.sensor import SensorEntity
+
+    device = model_device(make_device, load_miot_spec)
+    duration = SensorEntity(device, device.find_converter("sensor.lock_command_duration"))
+    transport = SensorEntity(device, device.find_converter("sensor.lock_command_transport"))
+
+    assert duration.entity_category == EntityCategory.DIAGNOSTIC
+    assert transport.entity_category == EntityCategory.DIAGNOSTIC
+    assert duration.native_unit_of_measurement == "s"
+    assert duration.state_class == "measurement"
+    assert duration.name == "Last command duration"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("local_ok, transport", [(True, "local"), (False, "cloud")])
+async def test_each_command_fills_in_the_command_sensors(
+    make_device, load_miot_spec, local_ok, transport
+):
+    from custom_components.xiaomi_miot.sensor import SensorEntity
+
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    duration = SensorEntity(device, device.find_converter("sensor.lock_command_duration"))
+    via = SensorEntity(device, device.find_converter("sensor.lock_command_transport"))
+    device.cloud = object()
+    device.local = object()
+    device.async_call_action = transport_calls_stub([], local_ok=local_ok)
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert duration.native_value == entity.extra_state_attributes["last_duration"]
+    assert duration.native_value >= 0
+    assert via.native_value == transport
+
+
+@pytest.mark.asyncio
+async def test_a_command_without_its_secret_still_fills_in_the_sensors(
+    make_device, load_miot_spec
+):
+    from custom_components.xiaomi_miot.sensor import SensorEntity
+
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    via = SensorEntity(device, device.find_converter("sensor.lock_command_transport"))
+    device.cloud = object()
+    device.local = object()
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        over = "local" if kwargs.get("local") else "cloud"
+        return MiotResult({}, code=-1, error="Unable to discover the device", updater=over)
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is False
+
+    assert via.native_value == "cloud"

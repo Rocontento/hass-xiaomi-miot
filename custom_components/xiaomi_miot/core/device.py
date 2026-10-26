@@ -46,6 +46,9 @@ from .templates import template
 if TYPE_CHECKING:
     from . import BasicEntity
 
+LOCK_COMMAND_DURATION = 'lock_command_duration'
+LOCK_COMMAND_TRANSPORT = 'lock_command_transport'
+
 InfoConverter = InfoConv().with_option(
     icon='mdi:information',
     device_class='update',
@@ -524,6 +527,22 @@ class Device(CustomConfigHelper):
         for d in ['sensor', 'binary_sensor']:
             for attr in self.custom_config_list(f'{d}_attributes') or []:
                 self.add_converter(AttrConv(attr, d))
+
+        if self.custom_config_bool('lock_command_sensors'):
+            # How long the last lock command took and which way it went, filled in
+            # by the lock entity itself as each command lands.
+            self.add_converter(BaseConv(LOCK_COMMAND_DURATION, 'sensor').with_option(
+                name='Last command duration',
+                icon='mdi:timer-lock-outline',
+                unit_of_measurement='s',
+                state_class='measurement',
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ))
+            self.add_converter(BaseConv(LOCK_COMMAND_TRANSPORT, 'sensor').with_option(
+                name='Last command transport',
+                icon='mdi:lan-connect',
+                entity_category=EntityCategory.DIAGNOSTIC,
+            ))
 
     async def init_coordinators(self):
         if dby := self.hass_device_disabled:

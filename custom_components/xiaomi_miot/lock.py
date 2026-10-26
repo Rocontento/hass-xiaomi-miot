@@ -18,6 +18,7 @@ from . import (
     async_setup_config_entry,
     bind_services_to_entries,
 )
+from .core.device import LOCK_COMMAND_DURATION, LOCK_COMMAND_TRANSPORT
 from .core.miot_spec import MiotAction, MiotProperty
 from .core.templates import template
 
@@ -199,8 +200,7 @@ class LockEntity(XEntity, BaseEntity):
                 self._attr_is_locking = False
                 self._attr_is_unlocking = False
                 self._attr_extra_state_attributes[f'{key}_result'] = self._secret_failure
-                self._attr_extra_state_attributes['last_transport'] = self._transport
-                self._attr_extra_state_attributes['last_duration'] = round(time.monotonic() - started, 2)
+                self.report_command(key, self._transport, started, False)
                 self._async_write_ha_state()
                 return False
         params = self.action_params(action, key, code)
@@ -213,15 +213,7 @@ class LockEntity(XEntity, BaseEntity):
         # Which way the command went. The routing has several opinions and none of
         # them show, so a command failing on one transport and working on the other
         # is otherwise only visible by turning on debug logging.
-        self._attr_extra_state_attributes['last_transport'] = result.updater if result else None
-        # How long the tap took to land, so one transport can be weighed against
-        # the other from the attributes rather than from a debug log.
-        self._attr_extra_state_attributes['last_duration'] = round(time.monotonic() - started, 2)
-        self.log.info(
-            '%s: %s over the %s took %.2fs, %s', self.entity_id, key,
-            result.updater if result else None,
-            self._attr_extra_state_attributes['last_duration'], 'ok' if success else 'failed',
-        )
+        self.report_command(key, result.updater if result else None, started, success)
         if success and action.out and not outs:
             # The action is declared to answer with a result and did not. The call
             # was accepted, but nothing says the lock acted on it, so do not let
@@ -243,6 +235,21 @@ class LockEntity(XEntity, BaseEntity):
         if success:
             await self.device.update_main_status()
         return success
+
+    def report_command(self, key, transport, started, success):
+        """Publish which way the command went and how long the tap took to land,
+        so one transport can be weighed against the other without a debug log."""
+        duration = round(time.monotonic() - started, 2)
+        self._attr_extra_state_attributes['last_transport'] = transport
+        self._attr_extra_state_attributes['last_duration'] = duration
+        self.log.info(
+            '%s: %s over the %s took %.2fs, %s', self.entity_id, key, transport,
+            duration, 'ok' if success else 'failed',
+        )
+        if self.device.find_converter(f'sensor.{LOCK_COMMAND_DURATION}'):
+            props = {LOCK_COMMAND_DURATION: duration, LOCK_COMMAND_TRANSPORT: transport}
+            self.device.props.update(props)
+            self.device.dispatch({f'sensor.{k}': v for k, v in props.items()}, log=False)
 
     def local_first_commands(self):
         """The commands tried over the LAN before the cloud, eg. `unlock,open`."""

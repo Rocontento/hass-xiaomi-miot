@@ -2437,6 +2437,8 @@ DEVICE_CUSTOMIZES = {
         # opening moves on to the cloud. A lock that answers at all did so in
         # well under a second.
         'local_first_tries': 2,
+        # `Last command duration` and `Last command transport` diagnostic sensors.
+        'lock_command_sensors': True,
         'miot_cloud_action': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',
