@@ -2433,6 +2433,10 @@ DEVICE_CUSTOMIZES = {
         # transport when it cannot get through, in both directions, and the lock
         # publishes `last_transport` and `last_duration` for each one.
         'local_first_commands': 'unlock,open',
+        # Two tries of up to 3s each over the LAN, rather than three, before an
+        # opening moves on to the cloud. A lock that answers at all did so in
+        # well under a second.
+        'local_first_tries': 2,
         'miot_cloud_action': True,
         'lock_action': 'remote_lock',
         'unlock_action': 'remote_unlock_e',

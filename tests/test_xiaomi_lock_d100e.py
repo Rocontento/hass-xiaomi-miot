@@ -816,3 +816,49 @@ async def test_without_a_lan_connection_opening_goes_over_the_cloud(
         assert await entity.async_unlock() is True
 
     assert calls == [(GET_LOCKMSG_AIID, None), (REMOTE_UNLOCK_AIID, "cloud")]
+
+
+@pytest.mark.asyncio
+async def test_the_lan_is_given_two_tries_before_opening_moves_on(
+    make_device, load_miot_spec
+):
+    """Only the first call is cut short. Once the lock has answered over the LAN
+    the command is pinned there, and it gets every try it needs."""
+    device = model_device(make_device, load_miot_spec)
+    entity = lock_entity(device)
+    device.cloud = object()
+    device.local = object()
+    tries = []
+
+    async def call_action(siid, aiid, params=None, **kwargs):
+        tries.append(kwargs.get("tries"))
+        out = ["s3cret", 1, "ok"] if aiid == GET_LOCKMSG_AIID else [1, "ok"]
+        return MiotResult({"code": 0, "out": out}, updater="local")
+
+    device.async_call_action = call_action
+    device.update_main_status = AsyncMock()
+
+    with patch.object(LockEntity, "_async_write_ha_state"):
+        assert await entity.async_unlock() is True
+
+    assert tries == [2, None]
+
+
+@pytest.mark.asyncio
+async def test_the_tries_reach_the_miio_session(hass, make_device, load_miot_spec):
+    device = model_device(make_device, load_miot_spec)
+    sent = []
+
+    class MiioStub:
+        addr = ("192.168.1.6", 54321)
+
+        async def send(self, method, params=None, **kwargs):
+            sent.append(kwargs.get("tries"))
+            return {"id": 1, "result": {"code": 0, "out": []}}
+
+    device.local = MiotDevice(hass, MiioStub())
+
+    await device.async_call_action(LOCK_UNLOCK_SIID, GET_LOCKMSG_AIID, [], local=True, tries=2)
+    await device.async_call_action(LOCK_UNLOCK_SIID, GET_LOCKMSG_AIID, [], local=True)
+
+    assert sent == [2, None]

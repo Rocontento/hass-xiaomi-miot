@@ -1240,7 +1240,10 @@ class Device(CustomConfigHelper):
                     action = self.spec.services.get(siid, {}).actions.get(aiid)
                 if not kwargs.get('force_params'):
                     pms['in'] = action.in_params(params or [])
-                result = await self.local.async_send('action', pms)
+                # A caller in a hurry can cut the retries short, eg. a lock trying
+                # the lan before the cloud would rather move on than wait 3 times.
+                tries = {'tries': kwargs['tries']} if kwargs.get('tries') else {}
+                result = await self.local.async_send('action', pms, **tries)
                 if action and isinstance(result, dict) and 'out' in result:
                     # The lan answers `out` as [{'piid': n, 'value': v}] and the
                     # cloud with the values alone. Everything reading a result

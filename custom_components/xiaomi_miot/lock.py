@@ -217,6 +217,11 @@ class LockEntity(XEntity, BaseEntity):
         # How long the tap took to land, so one transport can be weighed against
         # the other from the attributes rather than from a debug log.
         self._attr_extra_state_attributes['last_duration'] = round(time.monotonic() - started, 2)
+        self.log.info(
+            '%s: %s over the %s took %.2fs, %s', self.entity_id, key,
+            result.updater if result else None,
+            self._attr_extra_state_attributes['last_duration'], 'ok' if success else 'failed',
+        )
         if success and action.out and not outs:
             # The action is declared to answer with a result and did not. The call
             # was accepted, but nothing says the lock acted on it, so do not let
@@ -242,6 +247,11 @@ class LockEntity(XEntity, BaseEntity):
     def local_first_commands(self):
         """The commands tried over the LAN before the cloud, eg. `unlock,open`."""
         return self.custom_config_list('local_first_commands') or []
+
+    def local_first_tries(self):
+        """How many times the LAN is tried before a local first command moves on."""
+        tries = self.custom_config_integer('local_first_tries')
+        return max(1, tries) if tries else None
 
     def needs_secret(self, action: MiotAction, key):
         """Whether the lock expects a secret of its own as the action input."""
@@ -307,7 +317,12 @@ class LockEntity(XEntity, BaseEntity):
         """
         if self._transport is not None:
             return await self.async_call_action(action, params, **self.transport_kwargs())
-        result = await self.async_call_action(action, params, **self.transport_kwargs(self._preferred))
+        kwargs = self.transport_kwargs(self._preferred)
+        if self._preferred == 'local' and (tries := self.local_first_tries()):
+            # Each try waits up to 3s for an answer. With the cloud still to fall
+            # back on, a LAN that is not answering is better given up on early.
+            kwargs['tries'] = tries
+        result = await self.async_call_action(action, params, **kwargs)
         failed = self.transport_failed(result) or (
             action == self._act_secret and not (result and result.is_success)
         )
